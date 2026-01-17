@@ -190,7 +190,7 @@ async def scrape_wealth(c): return await fetch_google_rss(c, "wealth.com.tw", "�
 async def scrape_storm(c): return await fetch_google_rss(c, "storm.mg", "風傳媒")
 
 # ===========================
-# 3. AI 評分核心 (Timeout 修正)
+# 3. AI 評分核心
 # ===========================
 def get_available_model(api_key):
     try:
@@ -200,7 +200,6 @@ def get_available_model(api_key):
         if response.status_code == 200:
             data = response.json()
             models = data.get('models', [])
-            
             priority_list = ['models/gemini-1.5-flash', 'models/gemini-1.5-pro', 'models/gemini-1.0-pro', 'models/gemini-pro']
             
             for p_model in priority_list:
@@ -249,7 +248,6 @@ def analyze_with_gemini_requests(api_key, stock_name, news_data):
             "contents": [{"parts": [{"text": prompt}]}]
         }
         
-        # ⚠️ 這裡改為 60 秒，給 AI 足夠時間
         response = requests.post(url, headers=headers, json=payload, timeout=60)
         
         if response.status_code == 200:
@@ -291,12 +289,12 @@ async def run_analysis(stock_code):
     )
 
 # ===========================
-# 4. Streamlit 介面 (V14.9)
+# 4. Streamlit 介面 (V15.0)
 # ===========================
-st.set_page_config(page_title="V14.9 AI 投資顧問 (耐心版)", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="V15.0 AI 投資顧問 (極簡版)", page_icon="🛡️", layout="wide")
 st.markdown("""<style>.source-tag { padding: 3px 6px; border-radius: 4px; font-size: 11px; margin-right: 5px; color: white; display: inline-block; }.news-row { margin-bottom: 8px; padding: 4px; border-bottom: 1px solid #333; font-size: 14px; }.stock-check { background-color: #262730; padding: 10px; border-radius: 5px; border: 1px solid #4b4b4b; text-align: center; margin-bottom: 15px; }.stock-name-text { font-size: 24px; font-weight: bold; color: #4CAF50; }</style>""", unsafe_allow_html=True)
 
-st.title("🛡️ V14.9 股市全視角熱度儀 (耐心等待版)")
+st.title("🛡️ V15.0 股市全視角熱度儀 (極簡版)")
 
 # 自動同步
 if 'stock_dict' not in st.session_state:
@@ -315,7 +313,7 @@ with st.sidebar:
     
     active_key = None
     if SYSTEM_API_KEY:
-        st.success("✅ 系統金鑰已載入 (隱藏保護中)")
+        # st.success("✅ 系統金鑰已載入 (隱藏保護中)") # 隱藏這行
         active_key = SYSTEM_API_KEY
     else:
         user_key = st.text_input("Gemini API Key", type="password", placeholder="未檢測到系統 Key，請手動輸入")
@@ -362,7 +360,7 @@ if run_btn:
     if active_key and all_news:
         status.text("🧠 AI 正在掃描可用模型並撰寫報告...")
         bar.progress(80)
-        # 使用 Requests 版函數 (已調整 Timeout 為 60秒)
+        # 使用 Requests 版函數
         ai_score, ai_report, used_model = analyze_with_gemini_requests(active_key, target_name, all_news)
         
         if ai_score:
@@ -398,8 +396,8 @@ if run_btn:
         elif final_score <= 40: l, c = "🧊 偏空保守", "#5352ed"
         else: l, c = "⚖️ 中立震盪", "#747d8c"
         st.markdown(f"<h2 style='color:{c}'>{l}</h2>", unsafe_allow_html=True)
-        if used_model != "None":
-            st.caption(f"🤖 使用模型: {used_model}")
+        # if used_model != "None":
+        #    st.caption(f"🤖 使用模型: {used_model}") # 隱藏這行
         
         st.divider()
         st.subheader("新聞來源分布")
