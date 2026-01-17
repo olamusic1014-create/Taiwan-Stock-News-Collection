@@ -8,10 +8,16 @@ import xml.etree.ElementTree as ET
 import os
 import subprocess
 import re
-import urllib.parse
-import urllib.request
-import urllib.error
 import json
+
+# ===========================
+# 🛠️ 自動安裝 requests (如果沒有的話)
+# ===========================
+try:
+    import requests
+except ImportError:
+    subprocess.run([sys.executable, "-m", "pip", "install", "requests"], check=True)
+    import requests
 
 # ===========================
 # 0. 環境準備
@@ -65,23 +71,27 @@ async def sync_market_data():
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             context = await browser.new_context(user_agent=get_ua())
-            api_url = "https://scanner.tradingview.com/taiwan/scan"
-            payload = {
-                "columns": ["name", "description", "volume"],
-                "ignore_unknown_fields": False,
-                "options": {"lang": "zh_TW"},
-                "range": [0, 1500],
-                "sort": {"sortBy": "volume", "sortOrder": "desc"},
-                "symbols": {"query": {"types": []}, "tickers": []},
-                "filter": [{"left": "type", "operation": "in_range", "right": ["stock", "dr", "fund"]}]
-            }
-            response = await context.request.post(api_url, data=payload)
-            if response.ok:
-                data = await response.json()
-                for item in data.get('data', []):
-                    code = item['d'][0]
-                    name = item['d'][1].replace("KY", "").strip()
-                    full_stock_dict[name] = code
+            # 使用 requests 替代 playwright 做簡單 API 請求，更穩定
+            try:
+                api_url = "https://scanner.tradingview.com/taiwan/scan"
+                payload = {
+                    "columns": ["name", "description", "volume"],
+                    "ignore_unknown_fields": False,
+                    "options": {"lang": "zh_TW"},
+                    "range": [0, 1500],
+                    "sort": {"sortBy": "volume", "sortOrder": "desc"},
+                    "symbols": {"query": {"types": []}, "tickers": []},
+                    "filter": [{"left": "type", "operation": "in_range", "right": ["stock", "dr", "fund"]}]
+                }
+                resp = requests.post(api_url, json=payload, timeout=5)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    for item in data.get('data', []):
+                        code = item['d'][0]
+                        name = item['d'][1].replace("KY", "").strip()
+                        full_stock_dict[name] = code
+            except: pass
+            
             await browser.close()
     except Exception: pass
     return full_stock_dict, len(full_stock_dict)
@@ -97,7 +107,7 @@ async def resolve_stock_info(user_input, stock_dict):
         browser = await p.chromium.launch(headless=True)
         try:
             page = await browser.new_page(user_agent=get_ua())
-            encoded = urllib.parse.quote(clean_input)
+            encoded = requests.utils.quote(clean_input) # 使用 requests 的工具
             await page.goto(f"https://tw.stock.yahoo.com/search?p={encoded}", timeout=8000)
             link = page.locator("a[href*='/quote/']").first
             if await link.count() > 0:
@@ -182,17 +192,19 @@ async def scrape_wealth(c): return await fetch_google_rss(c, "wealth.com.tw", "�
 async def scrape_storm(c): return await fetch_google_rss(c, "storm.mg", "風傳媒")
 
 # ===========================
-# 3. AI 評分核心 (自動偵測版)
+# 3. AI 評分核心 (Requests 版)
 # ===========================
 def get_available_model(api_key):
     """先查詢 Google，看這把 Key 能用哪些模型"""
     try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-        with urllib.request.urlopen(url, timeout=5) as response:
-            data = json.loads(response.read().decode('utf-8'))
+        # 使用 requests.get 自動處理 headers 和編碼
+        response = requests.get(url, timeout=5)
+        
+        if response.status_code == 200:
+            data = response.json()
             models = data.get('models', [])
             
-            # 優先尋找支援 generateContent 的模型
             priority_list = [
                 'models/gemini-1.5-flash',
                 'models/gemini-1.5-pro',
@@ -200,26 +212,21 @@ def get_available_model(api_key):
                 'models/gemini-pro'
             ]
             
-            # 1. 先找優先清單裡的
             for p_model in priority_list:
                 for m in models:
                     if m['name'] == p_model and 'generateContent' in m['supportedGenerationMethods']:
                         return m['name']
             
-            # 2. 如果都沒有，隨便找一個能用的
             for m in models:
                 if 'generateContent' in m['supportedGenerationMethods']:
                     return m['name']
-                    
     except Exception:
         pass
-    return None # 偵測失敗
+    return None
 
-def analyze_with_gemini_auto(api_key, stock_name, news_data):
-    # 1. 自動偵測模型
+def analyze_with_gemini_requests(api_key, stock_name, news_data):
+    # 1. 自動偵測
     model_name = get_available_model(api_key)
-    
-    # 如果偵測失敗，我們嘗試用一個最保守的預設值
     if not model_name:
         model_name = "models/gemini-pro"
         
@@ -247,28 +254,25 @@ def analyze_with_gemini_auto(api_key, stock_name, news_data):
     """
 
     try:
-        # 注意：generateContent 的 URL 格式是 .../models/{model_name}:generateContent
-        # get_available_model 回傳的已經包含 'models/' 前綴，例如 'models/gemini-1.5-flash'
-        # 所以我們直接串接
         url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={api_key}"
         headers = {'Content-Type': 'application/json'}
-        data = {
+        payload = {
             "contents": [{"parts": [{"text": prompt}]}]
         }
         
-        req = urllib.request.Request(url, data=json.dumps(data).encode('utf-8'), headers=headers)
+        # 使用 requests.post，它會自動處理 UTF-8 編碼，解決 Windows 問題
+        response = requests.post(url, headers=headers, json=payload, timeout=15)
         
-        with urllib.request.urlopen(req, timeout=15) as response:
-            if response.status == 200:
-                result = json.loads(response.read().decode('utf-8'))
-                if 'candidates' in result and len(result['candidates']) > 0:
-                    content = result['candidates'][0]['content']['parts'][0]['text']
-                    score_match = re.search(r"SCORE:\s*(\d+)", content)
-                    score = int(score_match.group(1)) if score_match else 50
-                    return score, content, model_name
-                    
-    except urllib.error.HTTPError as e:
-        return None, f"HTTP Error {e.code}: {e.reason}", model_name
+        if response.status_code == 200:
+            result = response.json()
+            if 'candidates' in result and len(result['candidates']) > 0:
+                content = result['candidates'][0]['content']['parts'][0]['text']
+                score_match = re.search(r"SCORE:\s*(\d+)", content)
+                score = int(score_match.group(1)) if score_match else 50
+                return score, content, model_name
+        else:
+            return None, f"Error {response.status_code}: {response.text}", model_name
+
     except Exception as e:
         return None, str(e), model_name
 
@@ -298,12 +302,12 @@ async def run_analysis(stock_code):
     )
 
 # ===========================
-# 4. Streamlit 介面 (V14.7)
+# 4. Streamlit 介面 (V14.8)
 # ===========================
-st.set_page_config(page_title="V14.7 AI 投資顧問 (自動適配版)", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="V14.8 AI 投資顧問 (Requests版)", page_icon="🛡️", layout="wide")
 st.markdown("""<style>.source-tag { padding: 3px 6px; border-radius: 4px; font-size: 11px; margin-right: 5px; color: white; display: inline-block; }.news-row { margin-bottom: 8px; padding: 4px; border-bottom: 1px solid #333; font-size: 14px; }.stock-check { background-color: #262730; padding: 10px; border-radius: 5px; border: 1px solid #4b4b4b; text-align: center; margin-bottom: 15px; }.stock-name-text { font-size: 24px; font-weight: bold; color: #4CAF50; }</style>""", unsafe_allow_html=True)
 
-st.title("🛡️ V14.7 股市全視角熱度儀 (自動適配版)")
+st.title("🛡️ V14.8 股市全視角熱度儀 (Requests 編碼修復版)")
 
 # 自動同步
 if 'stock_dict' not in st.session_state:
@@ -369,8 +373,8 @@ if run_btn:
     if active_key and all_news:
         status.text("🧠 AI 正在掃描可用模型並撰寫報告...")
         bar.progress(80)
-        # 使用 自動適配 函數
-        ai_score, ai_report, used_model = analyze_with_gemini_auto(active_key, target_name, all_news)
+        # 使用 Requests 版函數
+        ai_score, ai_report, used_model = analyze_with_gemini_requests(active_key, target_name, all_news)
         
         if ai_score:
             final_score = ai_score
