@@ -9,6 +9,7 @@ import os
 import subprocess
 import re
 import json
+from datetime import datetime
 
 # ===========================
 # 🛠️ 自動安裝 requests
@@ -53,11 +54,21 @@ BASE_STOCKS = {
     "開發金": "2883", "新光金": "2888", "永豐金": "2890", "台新金": "2887", "合庫金": "5880",
     "第一金": "2892", "華南金": "2880", "彰銀": "2801", "臺企銀": "2834", "上海商銀": "5876",
     "元大台灣50": "0050", "元大高股息": "0056", "國泰永續高股息": "00878", "復華台灣科技優息": "00929",
-    "群益台灣精選高息": "00919", "元大美債20年": "00679B", "統一台灣高息動能": "00939", "元大台灣價值高息": "00940"
+    "群益台灣精選高息": "00919", "元大美債20年": "00679B", "統一台灣高息動能": "00939", "元大台灣價值高息": "00940",
+    "力積電": "6770"
+}
+
+SOURCE_WEIGHTS = {
+    "鉅亨網": 1.5,
+    "工商時報": 1.3,
+    "經濟日報": 1.3,
+    "財訊": 1.2,
+    "Yahoo": 1.2,
+    "default": 1.0
 }
 
 # ===========================
-# 2. 爬蟲模組
+# 2. 爬蟲模組 (擴大抓取版)
 # ===========================
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -134,27 +145,56 @@ async def fetch_google_rss(stock_code, site_domain, source_name):
             data = []
             for item in root.findall('.//item'):
                 title = item.find('title').text
+                link = item.find('link').text if item.find('link') is not None else None
                 desc_html = item.find('description').text if item.find('description') is not None else ""
                 desc_clean = re.sub(r'<[^>]+>', '', desc_html)
                 clean_title = title.split(" - ")[0]
+                
                 if len(clean_title) > 4: 
-                    data.append({"title": clean_title, "snippet": desc_clean[:200], "source": source_name})
-            return data[:5]
+                    data.append({
+                        "title": clean_title, 
+                        "snippet": desc_clean[:200], 
+                        "source": source_name,
+                        "link": link
+                    })
+            return data[:10] # ⬆️ 提升到 10 則
         except: return []
         finally: await browser.close()
 
 async def scrape_anue(stock_code):
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(user_agent=get_ua())
-        page = await context.new_page()
-        try:
-            await page.goto(f"https://www.cnyes.com/search/news?q={stock_code}", timeout=15000, wait_until="commit")
-            await page.wait_for_timeout(1500)
-            titles = await page.locator('h3, h2').all_inner_texts()
-            return [{"title": t, "snippet": t, "source": "鉅亨網"} for t in titles if len(t) > 6][:5]
-        except: return []
-        finally: await browser.close()
+    try:
+        current_time = int(time.time())
+        # ⬆️ 提升到 20 則，確保抓到頭條
+        url = f"https://ess.api.cnyes.com/ess/api/v1/news/keyword?q={stock_code}&limit=20&page=1"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://www.cnyes.com/"
+        }
+        response = requests.get(url, headers=headers, timeout=5)
+        
+        if response.status_code == 200:
+            data = response.json()
+            items = data.get('data', {}).get('items', [])
+            result = []
+            for item in items:
+                title = item.get('title', '')
+                summary = item.get('summary')
+                if summary is None: summary = ""
+                
+                news_id = item.get('newsId')
+                link = f"https://news.cnyes.com/news/id/{news_id}" if news_id else None
+                
+                if title:
+                    result.append({
+                        "title": title,
+                        "snippet": summary,
+                        "source": "鉅亨網",
+                        "link": link
+                    })
+            return result
+    except Exception:
+        pass
+    return []
 
 async def scrape_yahoo(stock_code):
     async with async_playwright() as p:
@@ -163,18 +203,32 @@ async def scrape_yahoo(stock_code):
         page = await context.new_page()
         try:
             await page.goto(f"https://tw.stock.yahoo.com/quote/{stock_code}.TW/news", timeout=20000, wait_until="domcontentloaded")
-            await page.wait_for_timeout(1500)
-            items = await page.locator('#YDC-Stream li').all()
+            await page.wait_for_timeout(2000)
+            
             data = []
-            for item in items[:5]:
+            elements = await page.locator('#main-2-QuoteNews-Proxy a[href*="/news/"]').all()
+            
+            seen_titles = set()
+            
+            # ⬆️ 提升到 20 則，確保頭條與列表都抓到
+            for el in elements[:20]:
                 try:
-                    t_el = item.locator('h3')
-                    if await t_el.count() > 0:
-                        title = await t_el.inner_text()
-                        desc_el = item.locator('p')
-                        snippet = await desc_el.inner_text() if await desc_el.count() > 0 else title
-                        data.append({"title": title, "snippet": snippet, "source": "Yahoo"})
+                    text = await el.inner_text()
+                    href = await el.get_attribute("href")
+                    
+                    lines = text.split('\n')
+                    title = max(lines, key=len) if lines else ""
+                    
+                    if len(title) > 5 and title not in seen_titles:
+                        seen_titles.add(title)
+                        data.append({
+                            "title": title, 
+                            "snippet": "Yahoo 焦點新聞", 
+                            "source": "Yahoo",
+                            "link": href
+                        })
                 except: pass
+                
             return data
         except: return []
         finally: await browser.close()
@@ -219,11 +273,15 @@ def analyze_with_gemini_requests(api_key, stock_name, news_data):
     if not model_name: model_name = "models/gemini-pro"
         
     news_text = ""
-    for i, news in enumerate(news_data):
-        news_text += f"{i+1}. [{news['source']}] {news['title']}\n   摘要: {news['snippet']}\n"
+    # 限制 AI 閱讀前 50 則，避免超過 Token 上限，但介面會顯示全部
+    for i, news in enumerate(news_data[:50]):
+        safe_snippet = news.get('snippet', '')
+        if safe_snippet is None: safe_snippet = ""
+        news_text += f"{i+1}. [{news['source']}] {news['title']}\n   摘要: {safe_snippet}\n"
 
     prompt = f"""
     你是一位專業的華爾街股票分析師。請閱讀以下關於「{stock_name}」的台灣財經新聞摘要，並進行綜合情緒分析。
+    注意：請特別重視來自「鉅亨網」、「工商時報」、「經濟日報」的專業財經報導，它們的權重應高於一般新聞。
     
     新聞列表：
     {news_text}
@@ -263,22 +321,38 @@ def analyze_with_gemini_requests(api_key, stock_name, news_data):
     except Exception as e:
         return None, str(e), model_name
 
-    return None, "未知錯誤", model_name
-
 def calculate_score_keyword(news_list, source_name):
     if not news_list: return 0, []
-    positive = ["上漲", "飆", "創高", "買超", "強勢", "超預期", "取得", "超越", "利多", "成長", "收益", "噴", "漲停", "旺", "攻頂", "受惠", "看好", "翻紅", "驚艷", "AI", "擴產", "先進", "動能", "發威", "領先", "搶單", "季增", "年增", "樂觀", "回溫", "布局", "利潤", "大漲", "完勝"]
+    
+    weight = SOURCE_WEIGHTS.get(source_name, SOURCE_WEIGHTS["default"])
+    positive = ["上漲", "飆", "創高", "買超", "強勢", "超預期", "取得", "超越", "利多", "成長", "收益", "噴", "漲停", "旺", "攻頂", "受惠", "看好", "翻紅", "驚艷", "AI", "擴產", "先進", "動能", "發威", "領先", "搶單", "季增", "年增", "樂觀", "回溫", "布局", "利潤", "大漲", "完勝", "收購", "賣廠", "百億"]
     negative = ["下跌", "賣", "砍", "觀望", "保守", "不如", "重挫", "外資賣", "縮減", "崩", "跌停", "疲軟", "利空", "修正", "調節", "延後", "衰退", "翻黑", "示警", "重殺", "不如預期", "裁員", "虧損", "大跌", "重挫", "隱憂", "利空"]
-    score = 50; reasons = []
+    
+    base_score = 50
+    reasons = []
+    
     for news in news_list:
-        content = news['title'] + " " + news.get('snippet', "")
+        snippet = news.get('snippet', '')
+        if snippet is None: snippet = ""
+        content = news['title'] + " " + snippet
         hit = False
+        
         for w in positive: 
-            if w in content: score += 12; reasons.append(w); hit = True
+            if w in content: 
+                base_score += (12 * weight)
+                reasons.append(w)
+                hit = True
         for w in negative: 
-            if w in content: score -= 12; reasons.append(w); hit = True
-        if not hit and len(content) > 10: score += 2
-    return max(0, min(100, score)), list(set(reasons))
+            if w in content: 
+                base_score -= (12 * weight)
+                reasons.append(w)
+                hit = True
+        
+        if not hit and len(content) > 10: 
+            base_score += (2 * weight)
+
+    final_score = max(0, min(100, base_score))
+    return final_score, list(set(reasons))
 
 async def run_analysis(stock_code):
     return await asyncio.gather(
@@ -289,12 +363,12 @@ async def run_analysis(stock_code):
     )
 
 # ===========================
-# 4. Streamlit 介面 (V15.0)
+# 4. Streamlit 介面 (V15.5)
 # ===========================
-st.set_page_config(page_title="V15.0 AI 投資顧問 (極簡版)", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="V15.5 AI 投資顧問 (火力全開版)", page_icon="🛡️", layout="wide")
 st.markdown("""<style>.source-tag { padding: 3px 6px; border-radius: 4px; font-size: 11px; margin-right: 5px; color: white; display: inline-block; }.news-row { margin-bottom: 8px; padding: 4px; border-bottom: 1px solid #333; font-size: 14px; }.stock-check { background-color: #262730; padding: 10px; border-radius: 5px; border: 1px solid #4b4b4b; text-align: center; margin-bottom: 15px; }.stock-name-text { font-size: 24px; font-weight: bold; color: #4CAF50; }</style>""", unsafe_allow_html=True)
 
-st.title("🛡️ V15.0 股市全視角熱度儀 (極簡版)")
+st.title("🛡️ V15.5 股市全視角熱度儀 (火力全開版)")
 
 # 自動同步
 if 'stock_dict' not in st.session_state:
@@ -313,7 +387,6 @@ with st.sidebar:
     
     active_key = None
     if SYSTEM_API_KEY:
-        # st.success("✅ 系統金鑰已載入 (隱藏保護中)") # 隱藏這行
         active_key = SYSTEM_API_KEY
     else:
         user_key = st.text_input("Gemini API Key", type="password", placeholder="未檢測到系統 Key，請手動輸入")
@@ -360,29 +433,38 @@ if run_btn:
     if active_key and all_news:
         status.text("🧠 AI 正在掃描可用模型並撰寫報告...")
         bar.progress(80)
-        # 使用 Requests 版函數
         ai_score, ai_report, used_model = analyze_with_gemini_requests(active_key, target_name, all_news)
         
         if ai_score:
             final_score = ai_score
         else:
-            st.warning(f"AI 連線失敗 ({ai_report})，轉為備用算法")
-            total = 0; count = 0
+            st.warning(f"AI 連線失敗，轉為備用算法")
+            total_weighted_score = 0
+            total_sources = 0
             for name, data in data_map.items():
-                s, _ = calculate_score_keyword(data, name)
-                if data: total += s; count += 1
-            final_score = round(total/count, 1) if count else 0
+                if data:
+                    s, _ = calculate_score_keyword(data, name)
+                    weight = SOURCE_WEIGHTS.get(name, 1.0)
+                    total_weighted_score += s * weight
+                    total_sources += weight
+            
+            final_score = round(total_weighted_score / total_sources, 1) if total_sources else 0
             
     else:
         status.text("⚡ 正在進行關鍵字+摘要權重計算...")
         bar.progress(80)
-        total = 0; count = 0
+        total_weighted_score = 0
+        total_sources = 0
         all_signals = []
         for name, data in data_map.items():
             s, r = calculate_score_keyword(data, name)
             all_signals.extend(r)
-            if data: total += s; count += 1
-        final_score = round(total/count, 1) if count else 0
+            if data: 
+                weight = SOURCE_WEIGHTS.get(name, 1.0)
+                total_weighted_score += s * weight
+                total_sources += weight
+        
+        final_score = round(total_weighted_score / total_sources, 1) if total_sources else 0
         ai_report = f"### 關鍵字訊號\n{', '.join(list(set(all_signals))[:15])}"
 
     bar.progress(100); time.sleep(0.5); status.empty(); bar.empty()
@@ -390,19 +472,19 @@ if run_btn:
     col1, col2 = st.columns([1, 2])
     
     with col1:
-        st.metric("綜合評分", f"{final_score} 分", f"{len(all_news)} 則新聞")
+        st.metric("綜合評分 (加權後)", f"{final_score} 分", f"{len(all_news)} 則新聞")
         if final_score >= 75: l, c = "🔥🔥🔥 極度樂觀", "#ff4757"
         elif final_score >= 60: l, c = "🔥 偏多看待", "#ffa502"
         elif final_score <= 40: l, c = "🧊 偏空保守", "#5352ed"
         else: l, c = "⚖️ 中立震盪", "#747d8c"
         st.markdown(f"<h2 style='color:{c}'>{l}</h2>", unsafe_allow_html=True)
-        # if used_model != "None":
-        #    st.caption(f"🤖 使用模型: {used_model}") # 隱藏這行
         
         st.divider()
         st.subheader("新聞來源分布")
         for name, data in data_map.items():
-            if data: st.caption(f"{name}: {len(data)} 則")
+            if data: 
+                weight_tag = f"(x{SOURCE_WEIGHTS.get(name, 1.0)})" if SOURCE_WEIGHTS.get(name, 1.0) > 1.0 else ""
+                st.caption(f"{name} {weight_tag}: {len(data)} 則")
 
     with col2:
         if active_key and "SCORE:" in ai_report:
@@ -414,14 +496,22 @@ if run_btn:
             st.write(ai_report)
             
         st.divider()
-        st.subheader("📰 精選新聞摘要")
+        st.subheader(f"📰 精選新聞摘要 (共 {len(all_news)} 則)")
         if all_news:
-            for n in all_news[:15]:
-                snippet = n.get('snippet', '無摘要')
+            # ⬆️ 解除封印！現在顯示所有新聞
+            for n in all_news:
+                snippet = n.get('snippet')
+                if snippet is None: snippet = "無摘要"
+                
+                link = n.get('link')
+                if not link:
+                    link = f"https://www.google.com/search?q={n['title']}"
+
                 if len(snippet) > 50: snippet = snippet[:50] + "..."
+                
                 st.markdown(f"""
                 <div class='news-row'>
-                    <b>[{n['source']}]</b> <a href='https://www.google.com/search?q={n['title']}' target='_blank'>{n['title']}</a><br>
+                    <b>[{n['source']}]</b> <a href='{link}' target='_blank' style='text-decoration:none; font-weight:bold; color: #4DA6FF;'>{n['title']}</a><br>
                     <small style='color:#aaa'>{snippet}</small>
                 </div>
                 """, unsafe_allow_html=True)
