@@ -11,7 +11,7 @@ import re
 import json
 
 # ===========================
-# 🛠️ 自動安裝 requests (如果沒有的話)
+# 🛠️ 自動安裝 requests
 # ===========================
 try:
     import requests
@@ -31,12 +31,12 @@ if sys.platform.startswith("win"):
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 # ===========================
-# 🔐 資安核心：讀取金鑰
+# 🔐 資安核心
 # ===========================
 SYSTEM_API_KEY = st.secrets.get("GEMINI_API_KEY", None)
 
 # ===========================
-# 1. 股票資料庫 (Top 100)
+# 1. 股票資料庫
 # ===========================
 BASE_STOCKS = {
     "台積電": "2330", "聯電": "2303", "鴻海": "2317", "聯發科": "2454", "長榮": "2603",
@@ -71,7 +71,6 @@ async def sync_market_data():
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             context = await browser.new_context(user_agent=get_ua())
-            # 使用 requests 替代 playwright 做簡單 API 請求，更穩定
             try:
                 api_url = "https://scanner.tradingview.com/taiwan/scan"
                 payload = {
@@ -91,7 +90,6 @@ async def sync_market_data():
                         name = item['d'][1].replace("KY", "").strip()
                         full_stock_dict[name] = code
             except: pass
-            
             await browser.close()
     except Exception: pass
     return full_stock_dict, len(full_stock_dict)
@@ -107,7 +105,7 @@ async def resolve_stock_info(user_input, stock_dict):
         browser = await p.chromium.launch(headless=True)
         try:
             page = await browser.new_page(user_agent=get_ua())
-            encoded = requests.utils.quote(clean_input) # 使用 requests 的工具
+            encoded = requests.utils.quote(clean_input)
             await page.goto(f"https://tw.stock.yahoo.com/search?p={encoded}", timeout=8000)
             link = page.locator("a[href*='/quote/']").first
             if await link.count() > 0:
@@ -192,25 +190,18 @@ async def scrape_wealth(c): return await fetch_google_rss(c, "wealth.com.tw", "�
 async def scrape_storm(c): return await fetch_google_rss(c, "storm.mg", "風傳媒")
 
 # ===========================
-# 3. AI 評分核心 (Requests 版)
+# 3. AI 評分核心 (Timeout 修正)
 # ===========================
 def get_available_model(api_key):
-    """先查詢 Google，看這把 Key 能用哪些模型"""
     try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-        # 使用 requests.get 自動處理 headers 和編碼
         response = requests.get(url, timeout=5)
         
         if response.status_code == 200:
             data = response.json()
             models = data.get('models', [])
             
-            priority_list = [
-                'models/gemini-1.5-flash',
-                'models/gemini-1.5-pro',
-                'models/gemini-1.0-pro',
-                'models/gemini-pro'
-            ]
+            priority_list = ['models/gemini-1.5-flash', 'models/gemini-1.5-pro', 'models/gemini-1.0-pro', 'models/gemini-pro']
             
             for p_model in priority_list:
                 for m in models:
@@ -225,10 +216,8 @@ def get_available_model(api_key):
     return None
 
 def analyze_with_gemini_requests(api_key, stock_name, news_data):
-    # 1. 自動偵測
     model_name = get_available_model(api_key)
-    if not model_name:
-        model_name = "models/gemini-pro"
+    if not model_name: model_name = "models/gemini-pro"
         
     news_text = ""
     for i, news in enumerate(news_data):
@@ -260,8 +249,8 @@ def analyze_with_gemini_requests(api_key, stock_name, news_data):
             "contents": [{"parts": [{"text": prompt}]}]
         }
         
-        # 使用 requests.post，它會自動處理 UTF-8 編碼，解決 Windows 問題
-        response = requests.post(url, headers=headers, json=payload, timeout=15)
+        # ⚠️ 這裡改為 60 秒，給 AI 足夠時間
+        response = requests.post(url, headers=headers, json=payload, timeout=60)
         
         if response.status_code == 200:
             result = response.json()
@@ -302,12 +291,12 @@ async def run_analysis(stock_code):
     )
 
 # ===========================
-# 4. Streamlit 介面 (V14.8)
+# 4. Streamlit 介面 (V14.9)
 # ===========================
-st.set_page_config(page_title="V14.8 AI 投資顧問 (Requests版)", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="V14.9 AI 投資顧問 (耐心版)", page_icon="🛡️", layout="wide")
 st.markdown("""<style>.source-tag { padding: 3px 6px; border-radius: 4px; font-size: 11px; margin-right: 5px; color: white; display: inline-block; }.news-row { margin-bottom: 8px; padding: 4px; border-bottom: 1px solid #333; font-size: 14px; }.stock-check { background-color: #262730; padding: 10px; border-radius: 5px; border: 1px solid #4b4b4b; text-align: center; margin-bottom: 15px; }.stock-name-text { font-size: 24px; font-weight: bold; color: #4CAF50; }</style>""", unsafe_allow_html=True)
 
-st.title("🛡️ V14.8 股市全視角熱度儀 (Requests 編碼修復版)")
+st.title("🛡️ V14.9 股市全視角熱度儀 (耐心等待版)")
 
 # 自動同步
 if 'stock_dict' not in st.session_state:
@@ -373,7 +362,7 @@ if run_btn:
     if active_key and all_news:
         status.text("🧠 AI 正在掃描可用模型並撰寫報告...")
         bar.progress(80)
-        # 使用 Requests 版函數
+        # 使用 Requests 版函數 (已調整 Timeout 為 60秒)
         ai_score, ai_report, used_model = analyze_with_gemini_requests(active_key, target_name, all_news)
         
         if ai_score:
