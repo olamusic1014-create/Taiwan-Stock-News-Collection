@@ -9,7 +9,8 @@ import os
 import subprocess
 import re
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
+import email.utils
 
 # ===========================
 # 🛠️ 自動安裝 requests
@@ -58,23 +59,20 @@ BASE_STOCKS = {
     "力積電": "6770"
 }
 
-SOURCE_WEIGHTS = {
-    "鉅亨網": 1.5,
-    "工商時報": 1.3,
-    "經濟日報": 1.3,
-    "財訊": 1.2,
-    "Yahoo": 1.2,
-    "default": 1.0
-}
-
 # ===========================
-# 2. 爬蟲模組 (擴大抓取版)
+# 2. 爬蟲模組 (維持 V15.6 的精兵策略)
 # ===========================
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
 ]
 def get_ua(): return random.choice(USER_AGENTS)
+
+def is_within_3_days(date_obj):
+    if not date_obj: return True
+    now = datetime.now(date_obj.tzinfo)
+    delta = now - date_obj
+    return delta.days <= 3
 
 async def sync_market_data():
     full_stock_dict = BASE_STOCKS.copy()
@@ -143,29 +141,42 @@ async def fetch_google_rss(stock_code, site_domain, source_name):
             xml_content = await response.text()
             root = ET.fromstring(xml_content)
             data = []
+            
             for item in root.findall('.//item'):
                 title = item.find('title').text
                 link = item.find('link').text if item.find('link') is not None else None
-                desc_html = item.find('description').text if item.find('description') is not None else ""
-                desc_clean = re.sub(r'<[^>]+>', '', desc_html)
-                clean_title = title.split(" - ")[0]
+                pub_date_str = item.find('pubDate').text if item.find('pubDate') is not None else None
                 
-                if len(clean_title) > 4: 
-                    data.append({
-                        "title": clean_title, 
-                        "snippet": desc_clean[:200], 
-                        "source": source_name,
-                        "link": link
-                    })
-            return data[:10] # ⬆️ 提升到 10 則
+                is_fresh = True
+                if pub_date_str:
+                    try:
+                        pub_date = email.utils.parsedate_to_datetime(pub_date_str)
+                        if not is_within_3_days(pub_date):
+                            is_fresh = False
+                    except: pass
+                
+                if is_fresh:
+                    desc_html = item.find('description').text if item.find('description') is not None else ""
+                    desc_clean = re.sub(r'<[^>]+>', '', desc_html)
+                    clean_title = title.split(" - ")[0]
+                    
+                    if len(clean_title) > 4: 
+                        data.append({
+                            "title": clean_title, 
+                            "snippet": desc_clean[:200], 
+                            "source": source_name,
+                            "link": link
+                        })
+            
+            return data[:3]
+            
         except: return []
         finally: await browser.close()
 
 async def scrape_anue(stock_code):
     try:
         current_time = int(time.time())
-        # ⬆️ 提升到 20 則，確保抓到頭條
-        url = f"https://ess.api.cnyes.com/ess/api/v1/news/keyword?q={stock_code}&limit=20&page=1"
+        url = f"https://ess.api.cnyes.com/ess/api/v1/news/keyword?q={stock_code}&limit=10&page=1"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Referer": "https://www.cnyes.com/"
@@ -176,7 +187,14 @@ async def scrape_anue(stock_code):
             data = response.json()
             items = data.get('data', {}).get('items', [])
             result = []
+            
+            three_days_ago_ts = current_time - (3 * 86400)
+            
             for item in items:
+                publish_at = item.get('publishAt', 0)
+                if publish_at < three_days_ago_ts:
+                    continue
+                
                 title = item.get('title', '')
                 summary = item.get('summary')
                 if summary is None: summary = ""
@@ -191,7 +209,8 @@ async def scrape_anue(stock_code):
                         "source": "鉅亨網",
                         "link": link
                     })
-            return result
+            
+            return result[:3]
     except Exception:
         pass
     return []
@@ -207,11 +226,9 @@ async def scrape_yahoo(stock_code):
             
             data = []
             elements = await page.locator('#main-2-QuoteNews-Proxy a[href*="/news/"]').all()
-            
             seen_titles = set()
             
-            # ⬆️ 提升到 20 則，確保頭條與列表都抓到
-            for el in elements[:20]:
+            for el in elements[:3]: 
                 try:
                     text = await el.inner_text()
                     href = await el.get_attribute("href")
@@ -223,7 +240,7 @@ async def scrape_yahoo(stock_code):
                         seen_titles.add(title)
                         data.append({
                             "title": title, 
-                            "snippet": "Yahoo 焦點新聞", 
+                            "snippet": "Yahoo 焦點新聞 (最新)", 
                             "source": "Yahoo",
                             "link": href
                         })
@@ -244,7 +261,7 @@ async def scrape_wealth(c): return await fetch_google_rss(c, "wealth.com.tw", "�
 async def scrape_storm(c): return await fetch_google_rss(c, "storm.mg", "風傳媒")
 
 # ===========================
-# 3. AI 評分核心
+# 3. AI 評分核心 (完全依賴 AI)
 # ===========================
 def get_available_model(api_key):
     try:
@@ -273,27 +290,32 @@ def analyze_with_gemini_requests(api_key, stock_name, news_data):
     if not model_name: model_name = "models/gemini-pro"
         
     news_text = ""
-    # 限制 AI 閱讀前 50 則，避免超過 Token 上限，但介面會顯示全部
-    for i, news in enumerate(news_data[:50]):
+    for i, news in enumerate(news_data):
         safe_snippet = news.get('snippet', '')
         if safe_snippet is None: safe_snippet = ""
         news_text += f"{i+1}. [{news['source']}] {news['title']}\n   摘要: {safe_snippet}\n"
 
+    # 🚀 AI 裁判提示詞 (強制要求 AI 打分)
     prompt = f"""
-    你是一位專業的華爾街股票分析師。請閱讀以下關於「{stock_name}」的台灣財經新聞摘要，並進行綜合情緒分析。
-    注意：請特別重視來自「鉅亨網」、「工商時報」、「經濟日報」的專業財經報導，它們的權重應高於一般新聞。
-    
-    新聞列表：
+    你現在是一位權威的華爾街資深分析師。請仔細閱讀以下關於「{stock_name}」的最新新聞內容（包含標題與摘要）。
+
+    任務：
+    請不要依賴簡單的關鍵字，而是要「理解」新聞的語氣、具體數據（如營收、EPS、訂單量）以及市場預期，來給出一個綜合情緒分數。
+
+    新聞列表 (只包含最近 3 天的重點新聞)：
     {news_text}
 
-    請輸出以下格式的報告 (請用繁體中文)：
-    1. **情緒分數 (0-100)**: (0是極度恐慌/利空，50是中立，100是極度樂觀/利多)。請直接給出一個數字。
-    2. **市場氣氛**: (例如：偏多、觀望、主力出貨、利多出盡等)。
-    3. **關鍵摘要**: 請總結這幾則新聞的核心重點，不要逐條列出，請融會貫通。
-    4. **多空分析**: 簡單列出利多因素與利空因素。
+    請輸出嚴格符合以下格式的報告 (請用繁體中文)：
+    1. **SCORE: [分數]** -> 請填入 0 到 100 的整數。
+       - 0-20: 極度恐慌 / 重大利空 (如跌停、虧損擴大、掉單)
+       - 40-60: 中立 / 觀望 / 多空交戰
+       - 80-100: 極度樂觀 / 重大利多 (如漲停、獲利創新高、接到大單)
+    2. **LEVEL**: (例如：偏多、觀望、主力出貨、利多出盡)。
+    3. **SUMMARY**: 請綜合分析這些新聞的核心影響。
+    4. **ANALYSIS**: 詳細列出你看多的理由與看空的理由。
 
-    輸出範例格式：
-    SCORE: 75
+    範例輸出：
+    SCORE: 78
     LEVEL: 樂觀偏多
     SUMMARY: ...
     ANALYSIS: ...
@@ -312,8 +334,9 @@ def analyze_with_gemini_requests(api_key, stock_name, news_data):
             result = response.json()
             if 'candidates' in result and len(result['candidates']) > 0:
                 content = result['candidates'][0]['content']['parts'][0]['text']
-                score_match = re.search(r"SCORE:\s*(\d+)", content)
-                score = int(score_match.group(1)) if score_match else 50
+                # 嚴格解析 AI 的分數
+                score_match = re.search(r"SCORE:\s*(\d+)", content, re.IGNORECASE)
+                score = int(score_match.group(1)) if score_match else None
                 return score, content, model_name
         else:
             return None, f"Error {response.status_code}: {response.text}", model_name
@@ -321,38 +344,23 @@ def analyze_with_gemini_requests(api_key, stock_name, news_data):
     except Exception as e:
         return None, str(e), model_name
 
-def calculate_score_keyword(news_list, source_name):
-    if not news_list: return 0, []
+# 備用關鍵字算法 (只有在 AI 掛掉時才用)
+def calculate_score_keyword_fallback(news_list):
+    if not news_list: return 0
     
-    weight = SOURCE_WEIGHTS.get(source_name, SOURCE_WEIGHTS["default"])
     positive = ["上漲", "飆", "創高", "買超", "強勢", "超預期", "取得", "超越", "利多", "成長", "收益", "噴", "漲停", "旺", "攻頂", "受惠", "看好", "翻紅", "驚艷", "AI", "擴產", "先進", "動能", "發威", "領先", "搶單", "季增", "年增", "樂觀", "回溫", "布局", "利潤", "大漲", "完勝", "收購", "賣廠", "百億"]
     negative = ["下跌", "賣", "砍", "觀望", "保守", "不如", "重挫", "外資賣", "縮減", "崩", "跌停", "疲軟", "利空", "修正", "調節", "延後", "衰退", "翻黑", "示警", "重殺", "不如預期", "裁員", "虧損", "大跌", "重挫", "隱憂", "利空"]
     
     base_score = 50
-    reasons = []
-    
     for news in news_list:
-        snippet = news.get('snippet', '')
-        if snippet is None: snippet = ""
+        snippet = news.get('snippet', '') or ""
         content = news['title'] + " " + snippet
-        hit = False
-        
         for w in positive: 
-            if w in content: 
-                base_score += (12 * weight)
-                reasons.append(w)
-                hit = True
+            if w in content: base_score += 5
         for w in negative: 
-            if w in content: 
-                base_score -= (12 * weight)
-                reasons.append(w)
-                hit = True
-        
-        if not hit and len(content) > 10: 
-            base_score += (2 * weight)
-
-    final_score = max(0, min(100, base_score))
-    return final_score, list(set(reasons))
+            if w in content: base_score -= 5
+            
+    return max(0, min(100, base_score))
 
 async def run_analysis(stock_code):
     return await asyncio.gather(
@@ -363,12 +371,12 @@ async def run_analysis(stock_code):
     )
 
 # ===========================
-# 4. Streamlit 介面 (V15.5)
+# 4. Streamlit 介面 (V15.7)
 # ===========================
-st.set_page_config(page_title="V15.5 AI 投資顧問 (火力全開版)", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="V15.7 AI 投資顧問 (AI裁判版)", page_icon="🛡️", layout="wide")
 st.markdown("""<style>.source-tag { padding: 3px 6px; border-radius: 4px; font-size: 11px; margin-right: 5px; color: white; display: inline-block; }.news-row { margin-bottom: 8px; padding: 4px; border-bottom: 1px solid #333; font-size: 14px; }.stock-check { background-color: #262730; padding: 10px; border-radius: 5px; border: 1px solid #4b4b4b; text-align: center; margin-bottom: 15px; }.stock-name-text { font-size: 24px; font-weight: bold; color: #4CAF50; }</style>""", unsafe_allow_html=True)
 
-st.title("🛡️ V15.5 股市全視角熱度儀 (火力全開版)")
+st.title("🛡️ V15.7 股市全視角熱度儀 (AI 裁判版)")
 
 # 自動同步
 if 'stock_dict' not in st.session_state:
@@ -414,7 +422,7 @@ if run_btn:
     target_name = st.session_state.get('target_name')
     
     status = st.empty(); bar = st.progress(0)
-    status.text(f"🔍 爬蟲出動：正在搜集 {target_name} 的全網新聞摘要...")
+    status.text(f"🔍 爬蟲出動：正在為您篩選 {target_name} 最近 3 天的頭條新聞...")
     bar.progress(10)
     
     results = asyncio.run(run_analysis(target_code))
@@ -428,51 +436,39 @@ if run_btn:
     
     final_score = 0
     ai_report = ""
-    used_model = "None"
+    score_source = "AI" # 標記分數來源
     
     if active_key and all_news:
-        status.text("🧠 AI 正在掃描可用模型並撰寫報告...")
+        status.text("🧠 AI 正在閱讀內容並進行深度評分...")
         bar.progress(80)
         ai_score, ai_report, used_model = analyze_with_gemini_requests(active_key, target_name, all_news)
         
-        if ai_score:
+        if ai_score is not None:
             final_score = ai_score
+            score_source = "AI" # 確認是 AI 打的分
         else:
-            st.warning(f"AI 連線失敗，轉為備用算法")
-            total_weighted_score = 0
-            total_sources = 0
-            for name, data in data_map.items():
-                if data:
-                    s, _ = calculate_score_keyword(data, name)
-                    weight = SOURCE_WEIGHTS.get(name, 1.0)
-                    total_weighted_score += s * weight
-                    total_sources += weight
-            
-            final_score = round(total_weighted_score / total_sources, 1) if total_sources else 0
+            # AI 失敗時的備用方案
+            st.warning(f"AI 連線或解析失敗，轉為備用算法")
+            final_score = calculate_score_keyword_fallback(all_news)
+            score_source = "Fallback"
+            ai_report = "### AI 無法生成報告，僅提供新聞摘要"
             
     else:
-        status.text("⚡ 正在進行關鍵字+摘要權重計算...")
+        status.text("⚡ 正在進行關鍵字計算...")
         bar.progress(80)
-        total_weighted_score = 0
-        total_sources = 0
-        all_signals = []
-        for name, data in data_map.items():
-            s, r = calculate_score_keyword(data, name)
-            all_signals.extend(r)
-            if data: 
-                weight = SOURCE_WEIGHTS.get(name, 1.0)
-                total_weighted_score += s * weight
-                total_sources += weight
-        
-        final_score = round(total_weighted_score / total_sources, 1) if total_sources else 0
-        ai_report = f"### 關鍵字訊號\n{', '.join(list(set(all_signals))[:15])}"
+        final_score = calculate_score_keyword_fallback(all_news)
+        score_source = "Fallback"
 
     bar.progress(100); time.sleep(0.5); status.empty(); bar.empty()
 
     col1, col2 = st.columns([1, 2])
     
     with col1:
-        st.metric("綜合評分 (加權後)", f"{final_score} 分", f"{len(all_news)} 則新聞")
+        # 顯示分數來源標籤
+        score_label = "🧠 AI 深度評分" if score_source == "AI" else "📊 備用關鍵字評分"
+        st.caption(score_label)
+        
+        st.metric("綜合評分", f"{final_score} 分", f"{len(all_news)} 則精選新聞")
         if final_score >= 75: l, c = "🔥🔥🔥 極度樂觀", "#ff4757"
         elif final_score >= 60: l, c = "🔥 偏多看待", "#ffa502"
         elif final_score <= 40: l, c = "🧊 偏空保守", "#5352ed"
@@ -483,22 +479,22 @@ if run_btn:
         st.subheader("新聞來源分布")
         for name, data in data_map.items():
             if data: 
-                weight_tag = f"(x{SOURCE_WEIGHTS.get(name, 1.0)})" if SOURCE_WEIGHTS.get(name, 1.0) > 1.0 else ""
-                st.caption(f"{name} {weight_tag}: {len(data)} 則")
+                st.caption(f"{name}: {len(data)} 則")
 
     with col2:
         if active_key and "SCORE:" in ai_report:
             st.subheader("🤖 AI 投資分析報告")
             clean_report = ai_report.replace("SCORE:", "").strip()
+            # 移除 score 行以免重複顯示
+            clean_report = re.sub(r"SCORE: \d+\n?", "", clean_report)
             st.info(clean_report)
         else:
-            st.subheader("📊 關鍵字分析結果")
+            st.subheader("📊 分析結果")
             st.write(ai_report)
             
         st.divider()
-        st.subheader(f"📰 精選新聞摘要 (共 {len(all_news)} 則)")
+        st.subheader(f"📰 精選頭條 (近3日 Top 3)")
         if all_news:
-            # ⬆️ 解除封印！現在顯示所有新聞
             for n in all_news:
                 snippet = n.get('snippet')
                 if snippet is None: snippet = "無摘要"
@@ -515,4 +511,4 @@ if run_btn:
                     <small style='color:#aaa'>{snippet}</small>
                 </div>
                 """, unsafe_allow_html=True)
-        else: st.info("無新聞資料")
+        else: st.info("無新聞資料 (最近 3 天無重要新聞)")
