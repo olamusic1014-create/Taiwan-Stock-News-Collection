@@ -1,5 +1,4 @@
-chromium
-libasound2
+libasound2t64
 libatk-bridge2.0-0
 libgtk-3-0
 libnss3
