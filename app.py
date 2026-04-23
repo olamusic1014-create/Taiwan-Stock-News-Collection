@@ -9,10 +9,12 @@ import xml.etree.ElementTree as ET
 import os
 import re
 import json
-from datetime import datetime, timedelta
 import email.utils
 
 from browser_support import detect_browser_status, get_launch_kwargs
+from news_relevance import build_google_rss_url, is_relevant_news_text
+from time_window import DEFAULT_DAY_RANGE, clamp_day_range, is_within_recent_days
+from ui_config import get_mobile_search_panel_config, resolve_active_api_key
 
 # ===========================
 # 0. 環境準備
@@ -68,12 +70,6 @@ USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
 ]
 def get_ua(): return random.choice(USER_AGENTS)
-
-def is_within_3_days(date_obj):
-    if not date_obj: return True
-    now = datetime.now(date_obj.tzinfo)
-    delta = now - date_obj
-    return delta.days <= 3
 
 async def sync_market_data():
     full_stock_dict = BASE_STOCKS.copy()
@@ -137,56 +133,59 @@ async def resolve_stock_info(user_input, stock_dict):
         finally: await browser.close()
     return None, None
 
-async def fetch_google_rss(stock_code, site_domain, source_name):
-    if not BROWSER_STATUS.available:
+async def fetch_google_rss(stock_code, stock_name, site_domain, source_name, day_range):
+    try:
+        rss_url = build_google_rss_url(stock_code, stock_name, site_domain)
+        response = requests.get(
+            rss_url,
+            timeout=10,
+            headers={"User-Agent": get_ua()},
+        )
+        if response.status_code != 200:
+            return []
+
+        root = ET.fromstring(response.text)
+        data = []
+
+        for item in root.findall('.//item'):
+            title = item.find('title').text if item.find('title') is not None else ""
+            link = item.find('link').text if item.find('link') is not None else None
+            pub_date_str = item.find('pubDate').text if item.find('pubDate') is not None else None
+
+            is_fresh = True
+            if pub_date_str:
+                try:
+                    pub_date = email.utils.parsedate_to_datetime(pub_date_str)
+                    if not is_within_recent_days(pub_date, day_range):
+                        is_fresh = False
+                except Exception:
+                    pass
+
+            if not is_fresh:
+                continue
+
+            desc_html = item.find('description').text if item.find('description') is not None else ""
+            desc_clean = re.sub(r'<[^>]+>', '', desc_html)
+            clean_title = title.split(" - ")[0].strip()
+            combined_text = f"{clean_title} {desc_clean}".strip()
+
+            if len(clean_title) > 4 and is_relevant_news_text(combined_text, stock_code, stock_name):
+                data.append({
+                    "title": clean_title,
+                    "snippet": desc_clean[:200],
+                    "source": source_name,
+                    "link": link
+                })
+
+        return data[:3]
+    except Exception:
         return []
 
-    async with async_playwright() as p:
-        browser = await launch_browser(p)
-        context = await browser.new_context(user_agent=get_ua())
-        page = await context.new_page()
-        try:
-            rss_url = f"https://news.google.com/rss/search?q={stock_code}+site:{site_domain}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
-            response = await page.goto(rss_url, timeout=20000, wait_until="commit")
-            xml_content = await response.text()
-            root = ET.fromstring(xml_content)
-            data = []
-            
-            for item in root.findall('.//item'):
-                title = item.find('title').text
-                link = item.find('link').text if item.find('link') is not None else None
-                pub_date_str = item.find('pubDate').text if item.find('pubDate') is not None else None
-                
-                is_fresh = True
-                if pub_date_str:
-                    try:
-                        pub_date = email.utils.parsedate_to_datetime(pub_date_str)
-                        if not is_within_3_days(pub_date):
-                            is_fresh = False
-                    except: pass
-                
-                if is_fresh:
-                    desc_html = item.find('description').text if item.find('description') is not None else ""
-                    desc_clean = re.sub(r'<[^>]+>', '', desc_html)
-                    clean_title = title.split(" - ")[0]
-                    
-                    if len(clean_title) > 4: 
-                        data.append({
-                            "title": clean_title, 
-                            "snippet": desc_clean[:200], 
-                            "source": source_name,
-                            "link": link
-                        })
-            
-            return data[:3]
-            
-        except: return []
-        finally: await browser.close()
 
-async def scrape_anue(stock_code):
+async def scrape_anue(stock_code, stock_name, day_range):
     try:
         current_time = int(time.time())
-        url = f"https://ess.api.cnyes.com/ess/api/v1/news/keyword?q={stock_code}&limit=10&page=1"
+        url = f"https://ess.api.cnyes.com/ess/api/v1/news/keyword?q={requests.utils.quote(stock_name)}&limit=10&page=1"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Referer": "https://www.cnyes.com/"
@@ -198,11 +197,11 @@ async def scrape_anue(stock_code):
             items = data.get('data', {}).get('items', [])
             result = []
             
-            three_days_ago_ts = current_time - (3 * 86400)
+            earliest_allowed_ts = current_time - (clamp_day_range(day_range) * 86400)
             
             for item in items:
                 publish_at = item.get('publishAt', 0)
-                if publish_at < three_days_ago_ts:
+                if publish_at < earliest_allowed_ts:
                     continue
                 
                 title = item.get('title', '')
@@ -211,8 +210,9 @@ async def scrape_anue(stock_code):
                 
                 news_id = item.get('newsId')
                 link = f"https://news.cnyes.com/news/id/{news_id}" if news_id else None
+                combined_text = f"{title} {summary}".strip()
                 
-                if title:
+                if title and is_relevant_news_text(combined_text, stock_code, stock_name):
                     result.append({
                         "title": title,
                         "snippet": summary,
@@ -263,15 +263,15 @@ async def scrape_yahoo(stock_code):
         except: return []
         finally: await browser.close()
 
-async def scrape_udn(c): return await fetch_google_rss(c, "money.udn.com", "經濟日報")
-async def scrape_ltn(c): return await fetch_google_rss(c, "ec.ltn.com.tw", "自由財經")
-async def scrape_ctee(c): return await fetch_google_rss(c, "ctee.com.tw", "工商時報")
-async def scrape_chinatimes(c): return await fetch_google_rss(c, "chinatimes.com", "中時新聞")
-async def scrape_ettoday(c): return await fetch_google_rss(c, "ettoday.net", "ETtoday")
-async def scrape_tvbs(c): return await fetch_google_rss(c, "news.tvbs.com.tw", "TVBS新聞")
-async def scrape_businesstoday(c): return await fetch_google_rss(c, "businesstoday.com.tw", "今周刊")
-async def scrape_wealth(c): return await fetch_google_rss(c, "wealth.com.tw", "財訊")
-async def scrape_storm(c): return await fetch_google_rss(c, "storm.mg", "風傳媒")
+async def scrape_udn(c, n, d): return await fetch_google_rss(c, n, "money.udn.com", "經濟日報", d)
+async def scrape_ltn(c, n, d): return await fetch_google_rss(c, n, "ec.ltn.com.tw", "自由財經", d)
+async def scrape_ctee(c, n, d): return await fetch_google_rss(c, n, "ctee.com.tw", "工商時報", d)
+async def scrape_chinatimes(c, n, d): return await fetch_google_rss(c, n, "chinatimes.com", "中時新聞", d)
+async def scrape_ettoday(c, n, d): return await fetch_google_rss(c, n, "ettoday.net", "ETtoday", d)
+async def scrape_tvbs(c, n, d): return await fetch_google_rss(c, n, "news.tvbs.com.tw", "TVBS新聞", d)
+async def scrape_businesstoday(c, n, d): return await fetch_google_rss(c, n, "businesstoday.com.tw", "今周刊", d)
+async def scrape_wealth(c, n, d): return await fetch_google_rss(c, n, "wealth.com.tw", "財訊", d)
+async def scrape_storm(c, n, d): return await fetch_google_rss(c, n, "storm.mg", "風傳媒", d)
 
 # ===========================
 # 3. AI 評分核心 (完全依賴 AI)
@@ -298,7 +298,7 @@ def get_available_model(api_key):
         pass
     return None
 
-def analyze_with_gemini_requests(api_key, stock_name, news_data):
+def analyze_with_gemini_requests(api_key, stock_name, news_data, day_range):
     model_name = get_available_model(api_key)
     if not model_name: model_name = "models/gemini-pro"
         
@@ -315,7 +315,7 @@ def analyze_with_gemini_requests(api_key, stock_name, news_data):
     任務：
     請不要依賴簡單的關鍵字，而是要「理解」新聞的語氣、具體數據（如營收、EPS、訂單量）以及市場預期，來給出一個綜合情緒分數。
 
-    新聞列表 (只包含最近 3 天的重點新聞)：
+    新聞列表 (只包含最近 {clamp_day_range(day_range)} 天的重點新聞)：
     {news_text}
 
     請輸出嚴格符合以下格式的報告 (請用繁體中文)：
@@ -375,21 +375,54 @@ def calculate_score_keyword_fallback(news_list):
             
     return max(0, min(100, base_score))
 
-async def run_analysis(stock_code):
+async def run_analysis(stock_code, stock_name, day_range):
+    safe_day_range = clamp_day_range(day_range)
     return await asyncio.gather(
-        scrape_anue(stock_code), scrape_yahoo(stock_code), scrape_udn(stock_code),
-        scrape_ltn(stock_code), scrape_ctee(stock_code), scrape_chinatimes(stock_code),
-        scrape_ettoday(stock_code), scrape_tvbs(stock_code), scrape_businesstoday(stock_code),
-        scrape_wealth(stock_code), scrape_storm(stock_code)
+        scrape_anue(stock_code, stock_name, safe_day_range), scrape_yahoo(stock_code), scrape_udn(stock_code, stock_name, safe_day_range),
+        scrape_ltn(stock_code, stock_name, safe_day_range), scrape_ctee(stock_code, stock_name, safe_day_range), scrape_chinatimes(stock_code, stock_name, safe_day_range),
+        scrape_ettoday(stock_code, stock_name, safe_day_range), scrape_tvbs(stock_code, stock_name, safe_day_range), scrape_businesstoday(stock_code, stock_name, safe_day_range),
+        scrape_wealth(stock_code, stock_name, safe_day_range), scrape_storm(stock_code, stock_name, safe_day_range)
     )
 
 # ===========================
 # 4. Streamlit 介面 (V15.7)
 # ===========================
 st.set_page_config(page_title="V15.7 AI 投資顧問 (AI裁判版)", page_icon="🛡️", layout="wide")
-st.markdown("""<style>.source-tag { padding: 3px 6px; border-radius: 4px; font-size: 11px; margin-right: 5px; color: white; display: inline-block; }.news-row { margin-bottom: 8px; padding: 4px; border-bottom: 1px solid #333; font-size: 14px; }.stock-check { background-color: #262730; padding: 10px; border-radius: 5px; border: 1px solid #4b4b4b; text-align: center; margin-bottom: 15px; }.stock-name-text { font-size: 24px; font-weight: bold; color: #4CAF50; }</style>""", unsafe_allow_html=True)
+st.markdown(
+    """<style>
+    .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] { background: #000000; color: #f5f5f5; }
+    .block-container { max-width: 720px; padding-top: 1.5rem; padding-bottom: 3rem; }
+    [data-testid="stSidebar"], [data-testid="collapsedControl"] { display: none; }
+    .source-tag { padding: 3px 6px; border-radius: 4px; font-size: 11px; margin-right: 5px; color: white; display: inline-block; }
+    .news-row { margin-bottom: 8px; padding: 10px 0; border-bottom: 1px solid #202020; font-size: 14px; }
+    .stock-check { background-color: #111111; padding: 14px; border-radius: 16px; border: 1px solid #2d2d2d; text-align: center; margin: 14px 0 18px 0; }
+    .stock-name-text { font-size: 24px; font-weight: bold; color: #4CAF50; }
+    .mobile-hero { text-align: center; padding: 0.5rem 0 1rem 0; }
+    .mobile-hero h1 { font-size: 1.9rem; margin-bottom: 0.4rem; }
+    .mobile-hero p { color: #bbbbbb; margin-bottom: 0; }
+    div[data-testid="stForm"] { background: #0a0a0a; border: 1px solid #1f1f1f; border-radius: 18px; padding: 0.75rem 0.75rem 0.25rem 0.75rem; }
+    div[data-testid="stForm"] input { background: #151515; color: #ffffff; border-radius: 12px; }
+    div[data-testid="stForm"] button { border-radius: 999px; min-height: 3rem; font-weight: 700; }
+    @media (max-width: 640px) {
+        .block-container { padding-top: 1rem; padding-left: 1rem; padding-right: 1rem; }
+        .mobile-hero h1 { font-size: 1.55rem; }
+    }
+    </style>""",
+    unsafe_allow_html=True,
+)
 
-st.title("🛡️ V15.7 股市全視角熱度儀 (AI 裁判版)")
+search_panel = get_mobile_search_panel_config()
+active_key = resolve_active_api_key(SYSTEM_API_KEY)
+
+st.markdown(
+    """
+    <div class="mobile-hero">
+        <h1>🛡️ 股市全視角熱度儀</h1>
+        <p>輸入股票代號或名稱，直接從手機啟動分析。</p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 # 自動同步
 if 'stock_dict' not in st.session_state:
@@ -399,52 +432,73 @@ if 'stock_dict' not in st.session_state:
         st.success(f"✅ 資料庫就緒：{count} 檔股票")
         time.sleep(1) 
 
-with st.sidebar:
-    st.header("⚙️ 設定")
+if not BROWSER_STATUS.available:
+    st.warning(browser_runtime_warning("部分即時抓取功能"))
+elif BROWSER_STATUS.source != "missing":
+    st.caption(f"瀏覽器環境：{BROWSER_STATUS.message}")
 
-    if not BROWSER_STATUS.available:
-        st.warning(browser_runtime_warning("部分即時抓取功能"))
-    elif BROWSER_STATUS.source != "missing":
-        st.caption(f"瀏覽器環境：{BROWSER_STATUS.message}")
+if not active_key:
+    st.caption("⚠️ 未偵測到系統 AI 金鑰，將使用備用關鍵字算法。")
 
-    user_input = st.text_input("輸入股票 (如 2330 或 緯創)", value="2330")
-    
-    st.markdown("---")
-    st.subheader("🧠 AI 大腦")
-    
-    active_key = None
-    if SYSTEM_API_KEY:
-        active_key = SYSTEM_API_KEY
+default_input = st.session_state.get("last_input", "2330")
+default_day_range = clamp_day_range(st.session_state.get("selected_day_range", DEFAULT_DAY_RANGE))
+with st.form("mobile_search_form"):
+    user_input = st.text_input(
+        search_panel.title,
+        value=default_input,
+        placeholder=search_panel.placeholder,
+        label_visibility="collapsed",
+    )
+    selected_day_range = st.select_slider(
+        search_panel.day_range_label,
+        options=[1, 2, 3, 4, 5],
+        value=default_day_range,
+        help="可選擇最近 1 到 5 天的新聞",
+    )
+    run_btn = st.form_submit_button(
+        f"🚀 {search_panel.button_label}",
+        type="primary",
+        use_container_width=True,
+    )
+
+if run_btn:
+    normalized_input = user_input.strip()
+    st.session_state.selected_day_range = clamp_day_range(selected_day_range)
+    if normalized_input:
+        code, name = asyncio.run(resolve_stock_info(normalized_input, st.session_state.stock_dict))
+        if code:
+            st.session_state.target_code = code
+            st.session_state.target_name = name
+            st.session_state.last_input = normalized_input
+        else:
+            st.session_state.target_code = None
+            st.session_state.target_name = None
+            st.session_state.last_input = normalized_input
     else:
-        user_key = st.text_input("Gemini API Key", type="password", placeholder="未檢測到系統 Key，請手動輸入")
-        if user_key: active_key = user_key
-        else: st.caption("⚠️ 使用備用關鍵字算法")
-    
-    if user_input:
-        if 'last_input' not in st.session_state or st.session_state.last_input != user_input:
-            code, name = asyncio.run(resolve_stock_info(user_input, st.session_state.stock_dict))
-            if code:
-                st.session_state.target_code = code
-                st.session_state.target_name = name
-                st.session_state.last_input = user_input
-            else:
-                st.session_state.target_code = None; st.session_state.target_name = None
+        st.session_state.target_code = None
+        st.session_state.target_name = None
 
-        if st.session_state.get('target_code'):
-            st.markdown(f"<div class='stock-check'><div class='stock-name-text'>{st.session_state.target_name}</div><div>({st.session_state.target_code})</div></div>", unsafe_allow_html=True)
-        else: st.markdown(f"<div class='stock-check' style='color:#ff4757'>⚠️ 找不到目標</div>", unsafe_allow_html=True)
-    
-    run_btn = st.button("🚀 啟動 AI 分析", type="primary", disabled=not st.session_state.get('target_code'))
+if st.session_state.get('target_code'):
+    st.markdown(
+        f"<div class='stock-check'><div class='stock-name-text'>{st.session_state.target_name}</div><div>({st.session_state.target_code})</div></div>",
+        unsafe_allow_html=True,
+    )
+elif st.session_state.get("last_input"):
+    st.markdown(
+        "<div class='stock-check' style='color:#ff4757'>⚠️ 找不到目標</div>",
+        unsafe_allow_html=True,
+    )
 
 if run_btn:
     target_code = st.session_state.get('target_code')
     target_name = st.session_state.get('target_name')
+    selected_day_range = clamp_day_range(st.session_state.get("selected_day_range", DEFAULT_DAY_RANGE))
     
     status = st.empty(); bar = st.progress(0)
-    status.text(f"🔍 爬蟲出動：正在為您篩選 {target_name} 最近 3 天的頭條新聞...")
+    status.text(f"🔍 爬蟲出動：正在為您篩選 {target_name} 最近 {selected_day_range} 天的頭條新聞...")
     bar.progress(10)
     
-    results = asyncio.run(run_analysis(target_code))
+    results = asyncio.run(run_analysis(target_code, target_name, selected_day_range))
     bar.progress(60)
     
     all_news = []
@@ -460,7 +514,7 @@ if run_btn:
     if active_key and all_news:
         status.text("🧠 AI 正在閱讀內容並進行深度評分...")
         bar.progress(80)
-        ai_score, ai_report, used_model = analyze_with_gemini_requests(active_key, target_name, all_news)
+        ai_score, ai_report, used_model = analyze_with_gemini_requests(active_key, target_name, all_news, selected_day_range)
         
         if ai_score is not None:
             final_score = ai_score
@@ -512,7 +566,7 @@ if run_btn:
             st.write(ai_report)
             
         st.divider()
-        st.subheader(f"📰 精選頭條 (近3日 Top 3)")
+        st.subheader(f"📰 精選頭條 (近{selected_day_range}日 Top 3)")
         if all_news:
             for n in all_news:
                 snippet = n.get('snippet')
@@ -530,4 +584,4 @@ if run_btn:
                     <small style='color:#aaa'>{snippet}</small>
                 </div>
                 """, unsafe_allow_html=True)
-        else: st.info("無新聞資料 (最近 3 天無重要新聞)")
+        else: st.info(f"無新聞資料 (最近 {selected_day_range} 天無重要新聞)")
