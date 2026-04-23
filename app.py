@@ -81,7 +81,7 @@ async def sync_market_data():
             "columns": ["name", "description", "volume"],
             "ignore_unknown_fields": False,
             "options": {"lang": "zh_TW"},
-            "range": [0, 1500],
+            "range": [0, 5000],
             "sort": {"sortBy": "volume", "sortOrder": "desc"},
             "symbols": {"query": {"types": []}, "tickers": []},
             "filter": [{"left": "type", "operation": "in_range", "right": ["stock", "dr", "fund"]}]
