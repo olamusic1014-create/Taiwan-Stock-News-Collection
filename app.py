@@ -14,6 +14,7 @@ import email.utils
 from browser_support import detect_browser_status, get_launch_kwargs
 from news_relevance import build_google_rss_url, is_relevant_news_text
 from time_window import DEFAULT_DAY_RANGE, clamp_day_range, is_within_recent_days
+from ui_helpers import build_report_markup, build_source_sections
 from ui_config import get_mobile_search_panel_config, resolve_active_api_key
 
 # ===========================
@@ -504,6 +505,7 @@ if run_btn:
     all_news = []
     source_names = ["鉅亨網", "Yahoo", "經濟日報", "自由財經", "工商時報", "中時新聞", "ETtoday", "TVBS新聞", "今周刊", "財訊", "風傳媒"]
     data_map = {name: res for name, res in zip(source_names, results)}
+    source_sections = build_source_sections(data_map)
     for name, data in data_map.items():
         all_news.extend(data)
     
@@ -550,9 +552,12 @@ if run_btn:
         
         st.divider()
         st.subheader("新聞來源分布")
-        for name, data in data_map.items():
-            if data: 
-                st.caption(f"{name}: {len(data)} 則")
+        for section in source_sections:
+            with st.expander(f"{section['source']}: {section['count']} 則"):
+                for link_item in section["links"]:
+                    st.markdown(
+                        f"- [{link_item['title']}]({link_item['link']})"
+                    )
 
     with col2:
         if active_key and "SCORE:" in ai_report:
@@ -560,10 +565,10 @@ if run_btn:
             clean_report = ai_report.replace("SCORE:", "").strip()
             # 移除 score 行以免重複顯示
             clean_report = re.sub(r"SCORE: \d+\n?", "", clean_report)
-            st.info(clean_report)
+            st.markdown(build_report_markup(clean_report), unsafe_allow_html=True)
         else:
             st.subheader("📊 分析結果")
-            st.write(ai_report)
+            st.markdown(build_report_markup(ai_report), unsafe_allow_html=True)
             
         st.divider()
         st.subheader(f"📰 精選頭條 (近{selected_day_range}日 Top 3)")
