@@ -433,11 +433,6 @@ if 'stock_dict' not in st.session_state:
         st.success(f"✅ 資料庫就緒：{count} 檔股票")
         time.sleep(1) 
 
-if not BROWSER_STATUS.available:
-    st.warning(browser_runtime_warning("部分即時抓取功能"))
-elif BROWSER_STATUS.source != "missing":
-    st.caption(f"瀏覽器環境：{BROWSER_STATUS.message}")
-
 if not active_key:
     st.caption("⚠️ 未偵測到系統 AI 金鑰，將使用備用關鍵字算法。")
 
