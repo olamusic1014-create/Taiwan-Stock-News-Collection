@@ -12,6 +12,7 @@ import json
 import email.utils
 
 from browser_support import detect_browser_status, get_launch_kwargs
+from market_data import merge_market_scan_data
 from news_relevance import build_google_rss_url, is_relevant_news_text
 from time_window import DEFAULT_DAY_RANGE, clamp_day_range, is_within_recent_days
 from ui_helpers import build_report_markup, build_source_sections
@@ -74,34 +75,27 @@ def get_ua(): return random.choice(USER_AGENTS)
 
 async def sync_market_data():
     full_stock_dict = BASE_STOCKS.copy()
-    if not BROWSER_STATUS.available:
-        return full_stock_dict, len(full_stock_dict)
-
     try:
-        async with async_playwright() as p:
-            browser = await launch_browser(p)
-            context = await browser.new_context(user_agent=get_ua())
-            try:
-                api_url = "https://scanner.tradingview.com/taiwan/scan"
-                payload = {
-                    "columns": ["name", "description", "volume"],
-                    "ignore_unknown_fields": False,
-                    "options": {"lang": "zh_TW"},
-                    "range": [0, 1500],
-                    "sort": {"sortBy": "volume", "sortOrder": "desc"},
-                    "symbols": {"query": {"types": []}, "tickers": []},
-                    "filter": [{"left": "type", "operation": "in_range", "right": ["stock", "dr", "fund"]}]
-                }
-                resp = requests.post(api_url, json=payload, timeout=5)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    for item in data.get('data', []):
-                        code = item['d'][0]
-                        name = item['d'][1].replace("KY", "").strip()
-                        full_stock_dict[name] = code
-            except: pass
-            await browser.close()
-    except Exception: pass
+        api_url = "https://scanner.tradingview.com/taiwan/scan"
+        payload = {
+            "columns": ["name", "description", "volume"],
+            "ignore_unknown_fields": False,
+            "options": {"lang": "zh_TW"},
+            "range": [0, 1500],
+            "sort": {"sortBy": "volume", "sortOrder": "desc"},
+            "symbols": {"query": {"types": []}, "tickers": []},
+            "filter": [{"left": "type", "operation": "in_range", "right": ["stock", "dr", "fund"]}]
+        }
+        resp = requests.post(
+            api_url,
+            json=payload,
+            timeout=5,
+            headers={"User-Agent": get_ua()},
+        )
+        if resp.status_code == 200:
+            full_stock_dict = merge_market_scan_data(full_stock_dict, resp.json())
+    except Exception:
+        pass
     return full_stock_dict, len(full_stock_dict)
 
 async def resolve_stock_info(user_input, stock_dict):
