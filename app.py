@@ -769,6 +769,20 @@ if st.session_state.current_view and st.session_state.current_view in st.session
         ai_report = res['ai_report']
         selected_day_range = res['selected_day_range']
         
+        # ─── AI 分析報告（全版，最優先）───
+        st.subheader("🤖 AI 投資分析報告")
+        if active_key and ai_report and "### 系統未配置" not in ai_report and "### AI 無法" not in ai_report:
+            import re
+            from ui_helpers import build_report_markup
+            clean_report = ai_report.replace("SCORE:", "").strip()
+            clean_report = re.sub(r"SCORE: \d+\n?", "", clean_report)
+            st.markdown(build_report_markup(clean_report), unsafe_allow_html=True)
+        else:
+            st.info(ai_report)
+        
+        st.divider()
+        
+        # ─── 新聞來源分布 + 精選頭條（下方兩欄）───
         col1, col2 = st.columns([1, 2])
         
         with col1:
@@ -779,19 +793,8 @@ if st.session_state.current_view and st.session_state.current_view in st.session
                         st.markdown(
                             f"- [{link_item['title']}]({link_item['link']})"
                         )
-
+        
         with col2:
-            st.subheader("🤖 AI 投資分析報告")
-            if active_key and ai_report and "### 系統未配置" not in ai_report and "### AI 無法" not in ai_report:
-                import re
-                from ui_helpers import build_report_markup
-                clean_report = ai_report.replace("SCORE:", "").strip()
-                clean_report = re.sub(r"SCORE: \d+\n?", "", clean_report)
-                st.markdown(build_report_markup(clean_report), unsafe_allow_html=True)
-            else:
-                st.info(ai_report)
-                
-            st.divider()
             st.subheader(f"🗞️ 精選頭條 (近 {selected_day_range} 日)")
             if all_news:
                 for n in all_news:
@@ -806,8 +809,8 @@ if st.session_state.current_view and st.session_state.current_view in st.session
                     
                     st.markdown(f"""
                     <div class='news-row'>
-                        <b>[{n['source']}]</b> <a href='{link}' target='_blank' style='text-decoration:none; font-weight:600; color: #0071e3;'>{n['title']}</a><br>
-                        <small style='color:#86868b'>{snippet}</small>
+                        <b>[{n['source']}]</b> <a href='{link}' target='_blank' style='text-decoration:none; font-weight:600; color: #3B82F6;'>{n['title']}</a><br>
+                        <small style='color:#94A3B8'>{snippet}</small>
                     </div>
                     """, unsafe_allow_html=True)
             else: 
