@@ -380,7 +380,74 @@ async def run_analysis(stock_code, stock_name, day_range):
     )
 
 # ===========================
-# 4. Streamlit 介面 (V15.7)
+# 4. 背景分析引擎
+# ===========================
+import threading
+from streamlit.runtime.scriptrunner import add_script_run_ctx
+
+def background_task_runner(task_id):
+    import asyncio
+    task_data = st.session_state.tasks[task_id]
+    
+    async def _run():
+        try:
+            target_code = task_data['stock_code']
+            target_name = task_data['stock_name']
+            selected_day_range = task_data['day_range']
+            
+            task_data['progress'] = 10
+            await asyncio.sleep(0.1)
+            
+            results = await run_analysis(target_code, target_name, selected_day_range)
+            task_data['progress'] = 60
+            
+            all_news = []
+            source_names = ["鉅亨網", "Yahoo", "經濟日報", "自由財經", "工商時報", "中時新聞", "ETtoday", "TVBS新聞", "今周刊", "財訊", "風傳媒"]
+            data_map = {name: res for name, res in zip(source_names, results)}
+            source_sections = build_source_sections(data_map)
+            for name, data in data_map.items():
+                all_news.extend(data)
+            
+            task_data['progress'] = 80
+            
+            final_score = 0
+            ai_report = ""
+            score_source = "AI"
+            
+            if SYSTEM_API_KEY and all_news:
+                ai_score, ai_report_text, used_model = analyze_with_gemini_requests(
+                    resolve_active_api_key(SYSTEM_API_KEY), target_name, all_news, selected_day_range
+                )
+                if ai_score is not None:
+                    final_score = ai_score
+                    score_source = "AI"
+                    ai_report = ai_report_text
+                else:
+                    final_score = calculate_score_keyword_fallback(all_news)
+                    score_source = "Fallback"
+                    ai_report = "### AI 無法生成報告，僅提供新聞摘要"
+            else:
+                final_score = calculate_score_keyword_fallback(all_news)
+                score_source = "Fallback"
+
+            task_data['progress'] = 100
+            task_data['result'] = {
+                "final_score": final_score,
+                "score_source": score_source,
+                "all_news": all_news,
+                "source_sections": source_sections,
+                "ai_report": ai_report,
+                "selected_day_range": selected_day_range
+            }
+            task_data['status'] = 'done'
+        except Exception as e:
+            task_data['status'] = 'error'
+            task_data['error'] = str(e)
+            
+    asyncio.run(_run())
+
+# ===========================
+# 5. Streamlit 介面 (V15.7)
 # ===========================
 st.set_page_config(page_title="V15.7 AI 投資顧問 (AI裁判版)", page_icon="🛡️", layout="wide")
 st.markdown(
@@ -397,7 +464,9 @@ st.markdown(
     .mobile-hero p { color: #bbbbbb; margin-bottom: 0; }
     div[data-testid="stForm"] { background: #0a0a0a; border: 1px solid #1f1f1f; border-radius: 18px; padding: 0.75rem 0.75rem 0.25rem 0.75rem; }
     div[data-testid="stForm"] input { background: #151515; color: #ffffff; border-radius: 12px; }
-    div[data-testid="stForm"] button { border-radius: 999px; min-height: 3rem; font-weight: 700; }
+    div[data-testid="stForm"] button { border-radius: 999px; min-height: 3rem; font-weight: 700; background-color: #ff4d4d; border-color: #ff4d4d; color: white; }
+    .done-btn-wrapper div[data-testid="stButton"] button { background-color: #4CAF50 !important; color: white !important; border: 2px solid #388E3C !important; border-radius: 999px !important; font-weight: bold; }
+    .error-btn-wrapper div[data-testid="stButton"] button { background-color: #f44336 !important; color: white !important; border: 2px solid #d32f2f !important; border-radius: 999px !important; font-weight: bold; }
     @media (max-width: 640px) {
         .block-container { padding-top: 1rem; padding-left: 1rem; padding-right: 1rem; }
         .mobile-hero h1 { font-size: 1.55rem; }
@@ -405,6 +474,15 @@ st.markdown(
     </style>""",
     unsafe_allow_html=True,
 )
+
+if 'tasks' not in st.session_state:
+    st.session_state.tasks = {}
+if 'tasks_slots' not in st.session_state:
+    st.session_state.tasks_slots = [None, None, None]
+if 'current_slot_idx' not in st.session_state:
+    st.session_state.current_slot_idx = 0
+if 'current_view' not in st.session_state:
+    st.session_state.current_view = None
 
 search_panel = get_mobile_search_panel_config()
 active_key = resolve_active_api_key(SYSTEM_API_KEY)
@@ -484,98 +562,145 @@ if run_btn:
     target_name = st.session_state.get('target_name')
     selected_day_range = clamp_day_range(st.session_state.get("selected_day_range", DEFAULT_DAY_RANGE))
     
-    status = st.empty(); bar = st.progress(0)
-    status.text(f"🔍 爬蟲出動：正在為您篩選 {target_name} 最近 {selected_day_range} 天的頭條新聞...")
-    bar.progress(10)
-    
-    results = asyncio.run(run_analysis(target_code, target_name, selected_day_range))
-    bar.progress(60)
-    
-    all_news = []
-    source_names = ["鉅亨網", "Yahoo", "經濟日報", "自由財經", "工商時報", "中時新聞", "ETtoday", "TVBS新聞", "今周刊", "財訊", "風傳媒"]
-    data_map = {name: res for name, res in zip(source_names, results)}
-    source_sections = build_source_sections(data_map)
-    for name, data in data_map.items():
-        all_news.extend(data)
-    
-    final_score = 0
-    ai_report = ""
-    score_source = "AI" # 標記分數來源
-    
-    if active_key and all_news:
-        status.text("🧠 AI 正在閱讀內容並進行深度評分...")
-        bar.progress(80)
-        ai_score, ai_report, used_model = analyze_with_gemini_requests(active_key, target_name, all_news, selected_day_range)
-        
-        if ai_score is not None:
-            final_score = ai_score
-            score_source = "AI" # 確認是 AI 打的分
-        else:
-            # AI 失敗時的備用方案
-            st.warning(f"AI 連線或解析失敗，轉為備用算法")
-            final_score = calculate_score_keyword_fallback(all_news)
-            score_source = "Fallback"
-            ai_report = "### AI 無法生成報告，僅提供新聞摘要"
-            
+    if not target_code:
+        st.error("找不到目標股票，無法啟動分析。")
     else:
-        status.text("⚡ 正在進行關鍵字計算...")
-        bar.progress(80)
-        final_score = calculate_score_keyword_fallback(all_news)
-        score_source = "Fallback"
-
-    bar.progress(100); time.sleep(0.5); status.empty(); bar.empty()
-
-    col1, col2 = st.columns([1, 2])
-    
-    with col1:
-        # 顯示分數來源標籤
-        score_label = "🧠 AI 深度評分" if score_source == "AI" else "📊 備用關鍵字評分"
-        st.caption(score_label)
+        slot_idx = st.session_state.current_slot_idx
+        task_id = f"task_{target_code}_{int(time.time())}"
         
-        st.metric("綜合評分", f"{final_score} 分", f"{len(all_news)} 則精選新聞")
-        if final_score >= 75: l, c = "🔥🔥🔥 極度樂觀", "#ff4757"
-        elif final_score >= 60: l, c = "🔥 偏多看待", "#ffa502"
-        elif final_score <= 40: l, c = "🧊 偏空保守", "#5352ed"
-        else: l, c = "⚖️ 中立震盪", "#747d8c"
-        st.markdown(f"<h2 style='color:{c}'>{l}</h2>", unsafe_allow_html=True)
+        # 覆蓋指定 slot 的舊任務 (如果有的話)
+        st.session_state.tasks_slots[slot_idx] = task_id
         
-        st.divider()
-        st.subheader("新聞來源分布")
-        for section in source_sections:
-            with st.expander(f"{section['source']}: {section['count']} 則"):
-                for link_item in section["links"]:
-                    st.markdown(
-                        f"- [{link_item['title']}]({link_item['link']})"
-                    )
+        st.session_state.tasks[task_id] = {
+            "task_id": task_id,
+            "stock_code": target_code,
+            "stock_name": target_name,
+            "day_range": selected_day_range,
+            "progress": 0,
+            "status": "running",
+            "result": None
+        }
+        
+        # 移動指標到下一個 slot (0 -> 1 -> 2 -> 0)
+        st.session_state.current_slot_idx = (slot_idx + 1) % 3
+        st.session_state.current_view = task_id
+        
+        # 啟動背景執行緒
+        import threading
+        from streamlit.runtime.scriptrunner import add_script_run_ctx
+        import time
+        t = threading.Thread(target=background_task_runner, args=(task_id,))
+        add_script_run_ctx(t)
+        t.start()
 
-    with col2:
-        if active_key and "SCORE:" in ai_report:
-            st.subheader("🤖 AI 投資分析報告")
-            clean_report = ai_report.replace("SCORE:", "").strip()
-            # 移除 score 行以免重複顯示
-            clean_report = re.sub(r"SCORE: \d+\n?", "", clean_report)
-            st.markdown(build_report_markup(clean_report), unsafe_allow_html=True)
-        else:
-            st.subheader("📊 分析結果")
-            st.markdown(build_report_markup(ai_report), unsafe_allow_html=True)
-            
-        st.divider()
-        st.subheader(f"📰 精選頭條 (近{selected_day_range}日 Top 3)")
-        if all_news:
-            for n in all_news:
-                snippet = n.get('snippet')
-                if snippet is None: snippet = "無摘要"
-                
-                link = n.get('link')
-                if not link:
-                    link = f"https://www.google.com/search?q={n['title']}"
-
-                if len(snippet) > 50: snippet = snippet[:50] + "..."
-                
+# 繪製 Task Slots 按鈕列
+st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
+cols = st.columns(3)
+for i in range(3):
+    t_id = st.session_state.tasks_slots[i]
+    with cols[i]:
+        if t_id and t_id in st.session_state.tasks:
+            task = st.session_state.tasks[t_id]
+            if task['status'] == 'running':
+                pct = task['progress']
+                code = task['stock_code']
+                name = task['stock_name']
+                # 進度條按鈕樣式
                 st.markdown(f"""
-                <div class='news-row'>
-                    <b>[{n['source']}]</b> <a href='{link}' target='_blank' style='text-decoration:none; font-weight:bold; color: #4DA6FF;'>{n['title']}</a><br>
-                    <small style='color:#aaa'>{snippet}</small>
+                <div style="background: linear-gradient(to right, #63C5DA {pct}%, #333333 {pct}%);
+                            padding: 10px; border-radius: 999px; text-align: center; color: white; font-weight: bold; border: 2px solid #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px;">
+                    {code}{name}{pct}%
                 </div>
                 """, unsafe_allow_html=True)
-        else: st.info(f"無新聞資料 (最近 {selected_day_range} 天無重要新聞)")
+            elif task['status'] == 'done':
+                st.markdown('<div class="done-btn-wrapper">', unsafe_allow_html=True)
+                if st.button(f"✅ {task['stock_name']}分析完成", key=f"btn_{t_id}", use_container_width=True):
+                    st.session_state.current_view = t_id
+                st.markdown('</div>', unsafe_allow_html=True)
+            elif task['status'] == 'error':
+                st.markdown('<div class="error-btn-wrapper">', unsafe_allow_html=True)
+                if st.button(f"❌ {task['stock_name']}失敗", key=f"btn_{t_id}", use_container_width=True):
+                    st.session_state.current_view = t_id
+                st.markdown('</div>', unsafe_allow_html=True)
+
+# 定期更新檢查
+if any(t['status'] == 'running' for t in st.session_state.tasks.values()):
+    import time
+    time.sleep(1)
+    st.rerun()
+
+# 顯示目前選取的報告
+if st.session_state.current_view and st.session_state.current_view in st.session_state.tasks:
+    task = st.session_state.tasks[st.session_state.current_view]
+    
+    st.markdown(f"### 🔍 {task['stock_name']} ({task['stock_code']}) 分析報告")
+    
+    if task['status'] == 'running':
+        st.info(f"🚀 正在為您篩選與分析中... 目前進度 {task['progress']}%")
+    elif task['status'] == 'error':
+        st.error(f"分析發生錯誤: {task['error']}")
+    elif task['status'] == 'done':
+        res = task['result']
+        final_score = res['final_score']
+        score_source = res['score_source']
+        all_news = res['all_news']
+        source_sections = res['source_sections']
+        ai_report = res['ai_report']
+        selected_day_range = res['selected_day_range']
+        
+        col1, col2 = st.columns([1, 2])
+        
+        with col1:
+            score_label = "🧠 AI 深度評分" if score_source == "AI" else "📊 備用關鍵字評分"
+            st.caption(score_label)
+            
+            st.metric("綜合評分", f"{final_score} 分", f"{len(all_news)} 則精選新聞")
+            if final_score >= 75: l, c = "🔥🔥🔥 極度樂觀", "#ff4757"
+            elif final_score >= 60: l, c = "🔥 偏多看待", "#ffa502"
+            elif final_score <= 40: l, c = "🧊 偏空保守", "#5352ed"
+            else: l, c = "⚖️ 中立震盪", "#747d8c"
+            st.markdown(f"<h2 style='color:{c}'>{l}</h2>", unsafe_allow_html=True)
+            
+            st.divider()
+            st.subheader("新聞來源分布")
+            for section in source_sections:
+                with st.expander(f"{section['source']}: {section['count']} 則"):
+                    for link_item in section["links"]:
+                        st.markdown(
+                            f"- [{link_item['title']}]({link_item['link']})"
+                        )
+
+        with col2:
+            if active_key and "SCORE:" in ai_report:
+                st.subheader("🤖 AI 投資分析報告")
+                import re
+                from ui_helpers import build_report_markup
+                clean_report = ai_report.replace("SCORE:", "").strip()
+                clean_report = re.sub(r"SCORE: \d+\n?", "", clean_report)
+                st.markdown(build_report_markup(clean_report), unsafe_allow_html=True)
+            else:
+                st.subheader("📊 分析結果")
+                from ui_helpers import build_report_markup
+                st.markdown(build_report_markup(ai_report), unsafe_allow_html=True)
+                
+            st.divider()
+            st.subheader(f"📰 精選頭條 (近{selected_day_range}日 Top 3)")
+            if all_news:
+                for n in all_news:
+                    snippet = n.get('snippet')
+                    if snippet is None: snippet = "無摘要"
+                    
+                    link = n.get('link')
+                    if not link:
+                        link = f"https://www.google.com/search?q={n['title']}"
+
+                    if len(snippet) > 50: snippet = snippet[:50] + "..."
+                    
+                    st.markdown(f"""
+                    <div class='news-row'>
+                        <b>[{n['source']}]</b> <a href='{link}' target='_blank' style='text-decoration:none; font-weight:bold; color: #4DA6FF;'>{n['title']}</a><br>
+                        <small style='color:#aaa'>{snippet}</small>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else: 
+                st.info(f"無新聞資料 (最近 {selected_day_range} 天無重要新聞)")
