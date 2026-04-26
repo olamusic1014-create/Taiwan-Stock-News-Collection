@@ -86,7 +86,8 @@ async def sync_market_data():
             "symbols": {"query": {"types": []}, "tickers": []},
             "filter": [{"left": "type", "operation": "in_range", "right": ["stock", "dr", "fund"]}]
         }
-        resp = requests.post(
+        resp = await asyncio.to_thread(
+            requests.post,
             api_url,
             json=payload,
             timeout=5,
@@ -131,7 +132,8 @@ async def resolve_stock_info(user_input, stock_dict):
 async def fetch_google_rss(stock_code, stock_name, site_domain, source_name, day_range):
     try:
         rss_url = build_google_rss_url(stock_code, stock_name, site_domain)
-        response = requests.get(
+        response = await asyncio.to_thread(
+            requests.get,
             rss_url,
             timeout=10,
             headers={"User-Agent": get_ua()},
@@ -274,7 +276,7 @@ async def scrape_storm(c, n, d): return await fetch_google_rss(c, n, "storm.mg",
 def get_available_model(api_key):
     try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-        response = await asyncio.to_thread(requests.get, url, timeout=5)
+        response = requests.get(url, timeout=5)
         
         if response.status_code == 200:
             data = response.json()
@@ -332,7 +334,7 @@ def analyze_with_gemini_requests(api_key, stock_name, news_data, day_range):
             "contents": [{"parts": [{"text": prompt}]}]
         }
         
-        response = await asyncio.to_thread(requests.get, url, headers=headers, json=payload, timeout=60)
+        response = requests.post(url, headers=headers, json=payload, timeout=60)
         
         if response.status_code == 200:
             result = response.json()
