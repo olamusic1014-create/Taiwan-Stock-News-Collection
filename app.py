@@ -185,7 +185,7 @@ async def scrape_anue(stock_code, stock_name, day_range):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Referer": "https://www.cnyes.com/"
         }
-        response = requests.get(url, headers=headers, timeout=5)
+        response = await asyncio.to_thread(requests.get, url, headers=headers, timeout=5)
         
         if response.status_code == 200:
             data = response.json()
@@ -274,7 +274,7 @@ async def scrape_storm(c, n, d): return await fetch_google_rss(c, n, "storm.mg",
 def get_available_model(api_key):
     try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-        response = requests.get(url, timeout=5)
+        response = await asyncio.to_thread(requests.get, url, timeout=5)
         
         if response.status_code == 200:
             data = response.json()
@@ -332,7 +332,7 @@ def analyze_with_gemini_requests(api_key, stock_name, news_data, day_range):
             "contents": [{"parts": [{"text": prompt}]}]
         }
         
-        response = requests.post(url, headers=headers, json=payload, timeout=60)
+        response = await asyncio.to_thread(requests.get, url, headers=headers, json=payload, timeout=60)
         
         if response.status_code == 200:
             result = response.json()
@@ -375,7 +375,16 @@ def background_task_runner(task_id):
             task_data['progress'] = 10
             await asyncio.sleep(0.1)
             
+            async def progress_updater():
+                for p in range(11, 60, 2):
+                    if task_data.get('progress', 0) >= 60: break
+                    task_data['progress'] = p
+                    await asyncio.sleep(1.0)
+            
+            updater_task = asyncio.create_task(progress_updater())
             results = await run_analysis(target_code, target_name, selected_day_range)
+            updater_task.cancel()
+            
             task_data['progress'] = 60
             
             all_news = []
@@ -518,23 +527,39 @@ st.markdown(
     }
     
     .done-btn-wrapper div[data-testid="stButton"] button { 
-        background-color: rgba(34, 197, 94, 0.1) !important; 
-        color: var(--cta-color) !important; 
-        border: 1px solid rgba(34, 197, 94, 0.2) !important; 
+        background-color: #10B981 !important; 
+        border: 1px solid #059669 !important; 
         border-radius: 16px !important; 
-        font-weight: 600; 
+    }
+    .done-btn-wrapper div[data-testid="stButton"] button p {
+        color: #ffffff !important; 
+        font-weight: 700 !important;
     }
     .done-btn-wrapper div[data-testid="stButton"] button:hover {
-        background-color: rgba(34, 197, 94, 0.15) !important; 
-        border-color: rgba(34, 197, 94, 0.3) !important; 
+        background-color: #059669 !important; 
+        border-color: #047857 !important; 
+    }
+    .done-btn-wrapper div[data-testid="stButton"] button p {
+        color: #ffffff !important; 
+        font-weight: 700 !important;
+    }
+    .done-btn-wrapper div[data-testid="stButton"] button:hover {
+        background-color: #059669 !important; 
+        border-color: #047857 !important; 
     }
 
     .error-btn-wrapper div[data-testid="stButton"] button { 
-        background-color: rgba(239, 68, 68, 0.1) !important; 
-        color: #EF4444 !important; 
-        border: 1px solid rgba(239, 68, 68, 0.2) !important; 
+        background-color: #EF4444 !important; 
+        border: 1px solid #B91C1C !important; 
         border-radius: 16px !important; 
-        font-weight: 600; 
+    }
+    .error-btn-wrapper div[data-testid="stButton"] button p {
+        color: #ffffff !important; 
+        font-weight: 700 !important;
+    }
+    .error-btn-wrapper div[data-testid="stButton"] button p {
+        color: #ffffff !important; 
+        font-weight: 700 !important;
     }
     
     /* 強制 24px 間距 */
