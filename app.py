@@ -564,13 +564,13 @@ st.markdown(
         font-weight: 700 !important;
     }
     
-    /* 強制 24px 間距 */
+    /* Task slots 欄位間距 24px */
     [data-testid="column"] {
-        padding-left: 12px !important;
-        padding-right: 12px !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
     }
     div[data-testid="stHorizontalBlock"] {
-        gap: 0 !important; 
+        gap: 24px !important; 
     }
 
     /* Expander UI Fixes */
