@@ -420,13 +420,33 @@ def background_task_runner(task_id):
 st.set_page_config(page_title="V15.7 AI 投資顧問 (AI裁判版)", page_icon="🛡️", layout="wide")
 st.markdown(
     """<style>
-    /* iPhone / Apple Premium Style */
-    * {
-        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif !important;
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap');
+
+    /* UI Pro Max: Financial Dashboard Palette & Premium Sans */
+    :root {
+        --bg-color: #020617;
+        --surface-color: #0F172A;
+        --surface-border: #1E293B;
+        --cta-color: #22C55E;
+        --cta-hover: #16a34a;
+        --text-main: #F8FAFC;
+        --text-muted: #94A3B8;
+        --accent-blue: #3B82F6;
     }
+
+    /* Apply font-family safely */
+    .stApp {
+        font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+    }
+    
+    /* Ensure Material Symbols are preserved */
+    .material-symbols-rounded, .stIcon, [data-testid="stIconMaterial"], [class*="icon"] {
+        font-family: "Material Symbols Rounded" !important;
+    }
+
     .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] { 
-        background: #000000; 
-        color: #f5f5f5; 
+        background: var(--bg-color); 
+        color: var(--text-main); 
     }
     .block-container { 
         max-width: 720px; 
@@ -437,62 +457,82 @@ st.markdown(
     
     .news-row { 
         margin-bottom: 12px; 
-        padding: 12px; 
+        padding: 16px; 
         border-radius: 16px;
-        background: rgba(255, 255, 255, 0.03);
-        border: 1px solid rgba(255, 255, 255, 0.08); 
+        background: var(--surface-color);
+        border: 1px solid var(--surface-border); 
         font-size: 14px; 
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
     }
+    .news-row:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        border-color: #334155;
+    }
+
     .stock-check { 
-        background-color: rgba(255, 255, 255, 0.05); 
-        padding: 14px; 
+        background-color: var(--surface-color); 
+        padding: 16px; 
         border-radius: 16px; 
-        border: 1px solid rgba(255, 255, 255, 0.1); 
+        border: 1px solid var(--surface-border); 
         text-align: center; 
-        margin: 14px 0 18px 0; 
-        backdrop-filter: blur(10px);
+        margin: 14px 0 20px 0; 
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
     }
-    .stock-name-text { font-size: 24px; font-weight: 600; color: #FFFFFF; }
-    .mobile-hero { text-align: center; padding: 0.5rem 0 1rem 0; }
-    .mobile-hero h1 { font-size: 1.9rem; margin-bottom: 0.4rem; font-weight: 700; letter-spacing: -0.5px; }
-    .mobile-hero p { color: #86868b; margin-bottom: 0; font-size: 15px; }
+    .stock-name-text { font-size: 26px; font-weight: 700; color: var(--cta-color); letter-spacing: -0.5px; }
+    
+    .mobile-hero { text-align: center; padding: 1rem 0 1.5rem 0; }
+    .mobile-hero h1 { font-size: 2.2rem; margin-bottom: 0.5rem; font-weight: 700; letter-spacing: -1px; color: var(--text-main); }
+    .mobile-hero p { color: var(--text-muted); margin-bottom: 0; font-size: 16px; }
     
     div[data-testid="stForm"] { 
-        background: rgba(255, 255, 255, 0.03); 
-        border: 1px solid rgba(255, 255, 255, 0.1); 
+        background: var(--surface-color); 
+        border: 1px solid var(--surface-border); 
         border-radius: 16px; 
-        padding: 1rem; 
-        backdrop-filter: blur(20px);
+        padding: 1.25rem; 
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
     }
     div[data-testid="stForm"] input { 
-        background: rgba(255, 255, 255, 0.05); 
-        color: #ffffff; 
+        background: #020617; 
+        color: var(--text-main); 
         border-radius: 16px; 
-        border: 1px solid rgba(255,255,255,0.1);
+        border: 1px solid var(--surface-border);
+        padding: 12px 16px;
     }
+    div[data-testid="stForm"] input:focus {
+        border-color: var(--accent-blue);
+        box-shadow: 0 0 0 1px var(--accent-blue);
+    }
+
     div[data-testid="stForm"] button { 
         border-radius: 16px; 
         min-height: 3rem; 
-        font-weight: 600; 
-        background-color: #0071e3; 
+        font-weight: 700; 
+        background-color: var(--accent-blue); 
         border: none; 
-        color: white; 
+        color: #ffffff; 
+        transition: background-color 0.2s;
     }
     div[data-testid="stForm"] button:hover {
-        background-color: #0077ED; 
+        background-color: #2563EB; 
     }
     
     .done-btn-wrapper div[data-testid="stButton"] button { 
-        background-color: rgba(52, 199, 89, 0.15) !important; 
-        color: #34C759 !important; 
-        border: 1px solid rgba(52, 199, 89, 0.3) !important; 
+        background-color: rgba(34, 197, 94, 0.1) !important; 
+        color: var(--cta-color) !important; 
+        border: 1px solid rgba(34, 197, 94, 0.2) !important; 
         border-radius: 16px !important; 
         font-weight: 600; 
     }
+    .done-btn-wrapper div[data-testid="stButton"] button:hover {
+        background-color: rgba(34, 197, 94, 0.15) !important; 
+        border-color: rgba(34, 197, 94, 0.3) !important; 
+    }
+
     .error-btn-wrapper div[data-testid="stButton"] button { 
-        background-color: rgba(255, 59, 48, 0.15) !important; 
-        color: #FF3B30 !important; 
-        border: 1px solid rgba(255, 59, 48, 0.3) !important; 
+        background-color: rgba(239, 68, 68, 0.1) !important; 
+        color: #EF4444 !important; 
+        border: 1px solid rgba(239, 68, 68, 0.2) !important; 
         border-radius: 16px !important; 
         font-weight: 600; 
     }
@@ -506,9 +546,32 @@ st.markdown(
         gap: 0 !important; 
     }
 
+    /* Expander UI Fixes */
+    [data-testid="stExpander"] {
+        background: var(--surface-color);
+        border: 1px solid var(--surface-border);
+        border-radius: 16px !important;
+        overflow: hidden;
+    }
+    
+    /* Progress bar pill fix */
+    .progress-pill {
+        padding: 12px; 
+        border-radius: 16px; 
+        text-align: center; 
+        color: white; 
+        font-weight: 600; 
+        border: 1px solid var(--surface-border); 
+        white-space: nowrap; 
+        overflow: hidden; 
+        text-overflow: ellipsis; 
+        font-size: 14px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
     @media (max-width: 640px) {
         .block-container { padding-top: 1rem; padding-left: 1rem; padding-right: 1rem; }
-        .mobile-hero h1 { font-size: 1.55rem; }
+        .mobile-hero h1 { font-size: 1.75rem; }
     }
     </style>""",
     unsafe_allow_html=True,
@@ -646,8 +709,7 @@ for i in range(3):
                 name = task['stock_name']
                 # 進度條按鈕樣式
                 st.markdown(f"""
-                <div style="background: linear-gradient(to right, rgba(0, 113, 227, 0.8) {pct}%, rgba(255, 255, 255, 0.05) {pct}%);
-                            padding: 10px; border-radius: 16px; text-align: center; color: white; font-weight: 600; border: 1px solid rgba(255, 255, 255, 0.1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px;">
+                <div class="progress-pill" style="background: linear-gradient(to right, var(--accent-blue) {pct}%, var(--surface-color) {pct}%);">
                     {code}{name} {pct}%
                 </div>
                 """, unsafe_allow_html=True)
