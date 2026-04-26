@@ -314,16 +314,12 @@ def analyze_with_gemini_requests(api_key, stock_name, news_data, day_range):
     {news_text}
 
     請輸出嚴格符合以下格式的報告 (請用繁體中文)：
-    1. **SCORE: [分數]** -> 請填入 0 到 100 的整數。
-       - 0-20: 極度恐慌 / 重大利空 (如跌停、虧損擴大、掉單)
-       - 40-60: 中立 / 觀望 / 多空交戰
-       - 80-100: 極度樂觀 / 重大利多 (如漲停、獲利創新高、接到大單)
-    2. **LEVEL**: (例如：偏多、觀望、主力出貨、利多出盡)。
-    3. **SUMMARY**: 請綜合分析這些新聞的核心影響。
-    4. **ANALYSIS**: 詳細列出你看多的理由與看空的理由。
+    請純粹基於語氣、具體數據和市場預期進行質性分析，並輸出嚴格符合以下格式的報告 (請用繁體中文)：
+    1. **LEVEL**: (例如：偏多、觀望、主力出貨、利多出盡)。
+    2. **SUMMARY**: 請綜合分析這些新聞的核心影響。
+    3. **ANALYSIS**: 詳細列出你看多的理由與看空的理由。
 
     範例輸出：
-    SCORE: 78
     LEVEL: 樂觀偏多
     SUMMARY: ...
     ANALYSIS: ...
@@ -342,33 +338,14 @@ def analyze_with_gemini_requests(api_key, stock_name, news_data, day_range):
             result = response.json()
             if 'candidates' in result and len(result['candidates']) > 0:
                 content = result['candidates'][0]['content']['parts'][0]['text']
-                # 嚴格解析 AI 的分數
-                score_match = re.search(r"SCORE:\s*(\d+)", content, re.IGNORECASE)
-                score = int(score_match.group(1)) if score_match else None
-                return score, content, model_name
+                return None, content, model_name
         else:
             return None, f"Error {response.status_code}: {response.text}", model_name
 
     except Exception as e:
         return None, str(e), model_name
 
-# 備用關鍵字算法 (只有在 AI 掛掉時才用)
-def calculate_score_keyword_fallback(news_list):
-    if not news_list: return 0
-    
-    positive = ["上漲", "飆", "創高", "買超", "強勢", "超預期", "取得", "超越", "利多", "成長", "收益", "噴", "漲停", "旺", "攻頂", "受惠", "看好", "翻紅", "驚艷", "AI", "擴產", "先進", "動能", "發威", "領先", "搶單", "季增", "年增", "樂觀", "回溫", "布局", "利潤", "大漲", "完勝", "收購", "賣廠", "百億"]
-    negative = ["下跌", "賣", "砍", "觀望", "保守", "不如", "重挫", "外資賣", "縮減", "崩", "跌停", "疲軟", "利空", "修正", "調節", "延後", "衰退", "翻黑", "示警", "重殺", "不如預期", "裁員", "虧損", "大跌", "重挫", "隱憂", "利空"]
-    
-    base_score = 50
-    for news in news_list:
-        snippet = news.get('snippet', '') or ""
-        content = news['title'] + " " + snippet
-        for w in positive: 
-            if w in content: base_score += 5
-        for w in negative: 
-            if w in content: base_score -= 5
-            
-    return max(0, min(100, base_score))
+
 
 async def run_analysis(stock_code, stock_name, day_range):
     safe_day_range = clamp_day_range(day_range)
@@ -410,30 +387,21 @@ def background_task_runner(task_id):
             
             task_data['progress'] = 80
             
-            final_score = 0
             ai_report = ""
-            score_source = "AI"
             
             if SYSTEM_API_KEY and all_news:
-                ai_score, ai_report_text, used_model = analyze_with_gemini_requests(
+                _, ai_report_text, used_model = analyze_with_gemini_requests(
                     resolve_active_api_key(SYSTEM_API_KEY), target_name, all_news, selected_day_range
                 )
-                if ai_score is not None:
-                    final_score = ai_score
-                    score_source = "AI"
+                if ai_report_text:
                     ai_report = ai_report_text
                 else:
-                    final_score = calculate_score_keyword_fallback(all_news)
-                    score_source = "Fallback"
                     ai_report = "### AI 無法生成報告，僅提供新聞摘要"
             else:
-                final_score = calculate_score_keyword_fallback(all_news)
-                score_source = "Fallback"
+                ai_report = "### 系統未配置 AI 金鑰，無法進行分析，僅提供新聞摘要"
 
             task_data['progress'] = 100
             task_data['result'] = {
-                "final_score": final_score,
-                "score_source": score_source,
                 "all_news": all_news,
                 "source_sections": source_sections,
                 "ai_report": ai_report,
@@ -452,21 +420,92 @@ def background_task_runner(task_id):
 st.set_page_config(page_title="V15.7 AI 投資顧問 (AI裁判版)", page_icon="🛡️", layout="wide")
 st.markdown(
     """<style>
-    .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] { background: #000000; color: #f5f5f5; }
-    .block-container { max-width: 720px; padding-top: 1.5rem; padding-bottom: 3rem; }
+    /* iPhone / Apple Premium Style */
+    * {
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif !important;
+    }
+    .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] { 
+        background: #000000; 
+        color: #f5f5f5; 
+    }
+    .block-container { 
+        max-width: 720px; 
+        padding-top: 1.5rem; 
+        padding-bottom: 3rem; 
+    }
     [data-testid="stSidebar"], [data-testid="collapsedControl"] { display: none; }
-    .source-tag { padding: 3px 6px; border-radius: 4px; font-size: 11px; margin-right: 5px; color: white; display: inline-block; }
-    .news-row { margin-bottom: 8px; padding: 10px 0; border-bottom: 1px solid #202020; font-size: 14px; }
-    .stock-check { background-color: #111111; padding: 14px; border-radius: 16px; border: 1px solid #2d2d2d; text-align: center; margin: 14px 0 18px 0; }
-    .stock-name-text { font-size: 24px; font-weight: bold; color: #4CAF50; }
+    
+    .news-row { 
+        margin-bottom: 12px; 
+        padding: 12px; 
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08); 
+        font-size: 14px; 
+    }
+    .stock-check { 
+        background-color: rgba(255, 255, 255, 0.05); 
+        padding: 14px; 
+        border-radius: 16px; 
+        border: 1px solid rgba(255, 255, 255, 0.1); 
+        text-align: center; 
+        margin: 14px 0 18px 0; 
+        backdrop-filter: blur(10px);
+    }
+    .stock-name-text { font-size: 24px; font-weight: 600; color: #FFFFFF; }
     .mobile-hero { text-align: center; padding: 0.5rem 0 1rem 0; }
-    .mobile-hero h1 { font-size: 1.9rem; margin-bottom: 0.4rem; }
-    .mobile-hero p { color: #bbbbbb; margin-bottom: 0; }
-    div[data-testid="stForm"] { background: #0a0a0a; border: 1px solid #1f1f1f; border-radius: 18px; padding: 0.75rem 0.75rem 0.25rem 0.75rem; }
-    div[data-testid="stForm"] input { background: #151515; color: #ffffff; border-radius: 12px; }
-    div[data-testid="stForm"] button { border-radius: 999px; min-height: 3rem; font-weight: 700; background-color: #ff4d4d; border-color: #ff4d4d; color: white; }
-    .done-btn-wrapper div[data-testid="stButton"] button { background-color: #4CAF50 !important; color: white !important; border: 2px solid #388E3C !important; border-radius: 999px !important; font-weight: bold; }
-    .error-btn-wrapper div[data-testid="stButton"] button { background-color: #f44336 !important; color: white !important; border: 2px solid #d32f2f !important; border-radius: 999px !important; font-weight: bold; }
+    .mobile-hero h1 { font-size: 1.9rem; margin-bottom: 0.4rem; font-weight: 700; letter-spacing: -0.5px; }
+    .mobile-hero p { color: #86868b; margin-bottom: 0; font-size: 15px; }
+    
+    div[data-testid="stForm"] { 
+        background: rgba(255, 255, 255, 0.03); 
+        border: 1px solid rgba(255, 255, 255, 0.1); 
+        border-radius: 16px; 
+        padding: 1rem; 
+        backdrop-filter: blur(20px);
+    }
+    div[data-testid="stForm"] input { 
+        background: rgba(255, 255, 255, 0.05); 
+        color: #ffffff; 
+        border-radius: 16px; 
+        border: 1px solid rgba(255,255,255,0.1);
+    }
+    div[data-testid="stForm"] button { 
+        border-radius: 16px; 
+        min-height: 3rem; 
+        font-weight: 600; 
+        background-color: #0071e3; 
+        border: none; 
+        color: white; 
+    }
+    div[data-testid="stForm"] button:hover {
+        background-color: #0077ED; 
+    }
+    
+    .done-btn-wrapper div[data-testid="stButton"] button { 
+        background-color: rgba(52, 199, 89, 0.15) !important; 
+        color: #34C759 !important; 
+        border: 1px solid rgba(52, 199, 89, 0.3) !important; 
+        border-radius: 16px !important; 
+        font-weight: 600; 
+    }
+    .error-btn-wrapper div[data-testid="stButton"] button { 
+        background-color: rgba(255, 59, 48, 0.15) !important; 
+        color: #FF3B30 !important; 
+        border: 1px solid rgba(255, 59, 48, 0.3) !important; 
+        border-radius: 16px !important; 
+        font-weight: 600; 
+    }
+    
+    /* 強制 24px 間距 */
+    [data-testid="column"] {
+        padding-left: 12px !important;
+        padding-right: 12px !important;
+    }
+    div[data-testid="stHorizontalBlock"] {
+        gap: 0 !important; 
+    }
+
     @media (max-width: 640px) {
         .block-container { padding-top: 1rem; padding-left: 1rem; padding-right: 1rem; }
         .mobile-hero h1 { font-size: 1.55rem; }
@@ -607,9 +646,9 @@ for i in range(3):
                 name = task['stock_name']
                 # 進度條按鈕樣式
                 st.markdown(f"""
-                <div style="background: linear-gradient(to right, #63C5DA {pct}%, #333333 {pct}%);
-                            padding: 10px; border-radius: 999px; text-align: center; color: white; font-weight: bold; border: 2px solid #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px;">
-                    {code}{name}{pct}%
+                <div style="background: linear-gradient(to right, rgba(0, 113, 227, 0.8) {pct}%, rgba(255, 255, 255, 0.05) {pct}%);
+                            padding: 10px; border-radius: 16px; text-align: center; color: white; font-weight: 600; border: 1px solid rgba(255, 255, 255, 0.1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px;">
+                    {code}{name} {pct}%
                 </div>
                 """, unsafe_allow_html=True)
             elif task['status'] == 'done':
@@ -636,8 +675,6 @@ if st.session_state.current_view and st.session_state.current_view in st.session
         st.error(f"分析發生錯誤: {task['error']}")
     elif task['status'] == 'done':
         res = task['result']
-        final_score = res['final_score']
-        score_source = res['score_source']
         all_news = res['all_news']
         source_sections = res['source_sections']
         ai_report = res['ai_report']
@@ -646,18 +683,7 @@ if st.session_state.current_view and st.session_state.current_view in st.session
         col1, col2 = st.columns([1, 2])
         
         with col1:
-            score_label = "🧠 AI 深度評分" if score_source == "AI" else "📊 備用關鍵字評分"
-            st.caption(score_label)
-            
-            st.metric("綜合評分", f"{final_score} 分", f"{len(all_news)} 則精選新聞")
-            if final_score >= 75: l, c = "🔥🔥🔥 極度樂觀", "#ff4757"
-            elif final_score >= 60: l, c = "🔥 偏多看待", "#ffa502"
-            elif final_score <= 40: l, c = "🧊 偏空保守", "#5352ed"
-            else: l, c = "⚖️ 中立震盪", "#747d8c"
-            st.markdown(f"<h2 style='color:{c}'>{l}</h2>", unsafe_allow_html=True)
-            
-            st.divider()
-            st.subheader("新聞來源分布")
+            st.subheader("📰 新聞來源分布")
             for section in source_sections:
                 with st.expander(f"{section['source']}: {section['count']} 則"):
                     for link_item in section["links"]:
@@ -666,20 +692,18 @@ if st.session_state.current_view and st.session_state.current_view in st.session
                         )
 
         with col2:
-            if active_key and "SCORE:" in ai_report:
-                st.subheader("🤖 AI 投資分析報告")
+            st.subheader("🤖 AI 投資分析報告")
+            if active_key and ai_report and "### 系統未配置" not in ai_report and "### AI 無法" not in ai_report:
                 import re
                 from ui_helpers import build_report_markup
                 clean_report = ai_report.replace("SCORE:", "").strip()
                 clean_report = re.sub(r"SCORE: \d+\n?", "", clean_report)
                 st.markdown(build_report_markup(clean_report), unsafe_allow_html=True)
             else:
-                st.subheader("📊 分析結果")
-                from ui_helpers import build_report_markup
-                st.markdown(build_report_markup(ai_report), unsafe_allow_html=True)
+                st.info(ai_report)
                 
             st.divider()
-            st.subheader(f"📰 精選頭條 (近{selected_day_range}日 Top 3)")
+            st.subheader(f"🗞️ 精選頭條 (近 {selected_day_range} 日)")
             if all_news:
                 for n in all_news:
                     snippet = n.get('snippet')
@@ -693,8 +717,8 @@ if st.session_state.current_view and st.session_state.current_view in st.session
                     
                     st.markdown(f"""
                     <div class='news-row'>
-                        <b>[{n['source']}]</b> <a href='{link}' target='_blank' style='text-decoration:none; font-weight:bold; color: #4DA6FF;'>{n['title']}</a><br>
-                        <small style='color:#aaa'>{snippet}</small>
+                        <b>[{n['source']}]</b> <a href='{link}' target='_blank' style='text-decoration:none; font-weight:600; color: #0071e3;'>{n['title']}</a><br>
+                        <small style='color:#86868b'>{snippet}</small>
                     </div>
                     """, unsafe_allow_html=True)
             else: 
