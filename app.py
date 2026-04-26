@@ -771,7 +771,27 @@ if st.session_state.current_view and st.session_state.current_view in st.session
         
         # ─── AI 分析報告（全版，最優先）───
         st.subheader("🤖 AI 投資分析報告")
-        if active_key and ai_report and "### 系統未配置" not in ai_report and "### AI 無法" not in ai_report:
+        if not all_news:
+            # 沒有新聞時，引導用戶延長搜尋天數
+            st.markdown(f"""
+            <div style='
+                background: rgba(59, 130, 246, 0.08);
+                border: 1px solid rgba(59, 130, 246, 0.25);
+                border-radius: 16px;
+                padding: 20px 24px;
+                text-align: center;
+            '>
+                <div style='font-size: 32px; margin-bottom: 12px;'>🔍</div>
+                <div style='font-size: 16px; font-weight: 600; color: #F8FAFC; margin-bottom: 8px;'>
+                    近 {selected_day_range} 天內沒有找到相關新聞
+                </div>
+                <div style='font-size: 14px; color: #94A3B8; line-height: 1.6;'>
+                    這支股票可能是較冷門的小型股。<br>
+                    請回到上方，將「抓取天數」拉長至 <b style='color: #3B82F6;'>7 天或 14 天</b>，再重新分析。
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        elif active_key and ai_report and "### 系統未配置" not in ai_report and "### AI 無法" not in ai_report:
             import re
             from ui_helpers import build_report_markup
             clean_report = ai_report.replace("SCORE:", "").strip()
