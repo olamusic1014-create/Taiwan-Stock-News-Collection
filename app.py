@@ -648,9 +648,9 @@ with st.form("mobile_search_form"):
     )
     selected_day_range = st.select_slider(
         search_panel.day_range_label,
-        options=[1, 2, 3, 4, 5],
+        options=[1, 2, 3, 5, 7, 10, 14],
         value=default_day_range,
-        help="可選擇最近 1 到 5 天的新聞",
+        help="可選擇最近 1 到 14 天的新聞",
     )
     run_btn = st.form_submit_button(
         f"🚀 {search_panel.button_label}",

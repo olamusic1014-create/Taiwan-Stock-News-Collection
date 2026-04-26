@@ -4,8 +4,8 @@ from datetime import datetime
 
 
 MIN_DAY_RANGE = 1
-MAX_DAY_RANGE = 5
-DEFAULT_DAY_RANGE = 3
+MAX_DAY_RANGE = 14
+DEFAULT_DAY_RANGE = 7
 
 
 def clamp_day_range(day_range: int) -> int:
