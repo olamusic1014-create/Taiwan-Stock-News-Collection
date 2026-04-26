@@ -623,11 +623,6 @@ for i in range(3):
                     st.session_state.current_view = t_id
                 st.markdown('</div>', unsafe_allow_html=True)
 
-# 定期更新檢查
-if any(t['status'] == 'running' for t in st.session_state.tasks.values()):
-    import time
-    time.sleep(1)
-    st.rerun()
 
 # 顯示目前選取的報告
 if st.session_state.current_view and st.session_state.current_view in st.session_state.tasks:
@@ -704,3 +699,9 @@ if st.session_state.current_view and st.session_state.current_view in st.session
                     """, unsafe_allow_html=True)
             else: 
                 st.info(f"無新聞資料 (最近 {selected_day_range} 天無重要新聞)")
+
+# 定期更新檢查
+if any(t['status'] == 'running' for t in st.session_state.tasks.values()):
+    import time
+    time.sleep(1)
+    st.rerun()
