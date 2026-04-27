@@ -359,29 +359,20 @@ async def run_analysis(stock_code, stock_name, day_range):
     )
 
 # ===========================
-# 3b. 今日股市焦點模組
+# 3b. 今日股市焦點模組（共用個股爬蟲架構）
 # ===========================
-async def fetch_market_headlines_today():
-    """抓取當日台股市場頭條新聞（多來源）"""
-    from urllib.parse import quote_plus
-    import email.utils
-    from datetime import datetime, timezone
 
-    today = datetime.now(timezone.utc)
-    headlines = []
-
-    # 來源 1：鉅亨網市場熱門新聞（今日）
+async def scrape_anue_market() -> list:
+    """鉅亨網台股分類新聞 API（市場焦點專用，不需關鍵字）"""
     try:
         url = "https://ess.api.cnyes.com/ess/api/v1/news/category/tw_stock?limit=20&page=1"
-        headers = {
-            "User-Agent": get_ua(),
-            "Referer": "https://www.cnyes.com/"
-        }
+        headers = {"User-Agent": get_ua(), "Referer": "https://www.cnyes.com/"}
         resp = await asyncio.to_thread(requests.get, url, headers=headers, timeout=8)
         if resp.status_code == 200:
             data = resp.json()
             items = data.get('data', {}).get('items', [])
             cutoff = int(time.time()) - 86400  # 最近 24 小時
+            result = []
             for item in items:
                 if item.get('publishAt', 0) < cutoff:
                     continue
@@ -390,66 +381,91 @@ async def fetch_market_headlines_today():
                 news_id = item.get('newsId')
                 link = f"https://news.cnyes.com/news/id/{news_id}" if news_id else None
                 if title:
-                    headlines.append({
+                    result.append({
                         'title': title,
                         'snippet': summary[:150],
                         'source': '鉅亨網',
                         'link': link
                     })
+            return result[:5]
     except Exception:
         pass
+    return []
 
-    # 來源 2：Google News RSS — 台灣股市今日焦點
-    rss_queries = [
-        ("台灣股市 台股", "台股綜合"),
-        ("台積電 聯發科 股價", "科技龍頭"),
-        ("法人買超 外資 投信", "法人動態"),
-    ]
-    for q, label in rss_queries:
-        try:
-            encoded = quote_plus(q)
-            rss_url = f"https://news.google.com/rss/search?q={encoded}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
-            resp = await asyncio.to_thread(requests.get, rss_url, headers={"User-Agent": get_ua()}, timeout=8)
-            if resp.status_code == 200:
-                root = ET.fromstring(resp.text)
-                cutoff_ts = int(time.time()) - 86400
-                for item in root.findall('.//item'):
-                    title_el = item.find('title')
-                    link_el = item.find('link')
-                    pub_el = item.find('pubDate')
-                    title = title_el.text.split(' - ')[0].strip() if title_el is not None and title_el.text else ''
-                    link = link_el.text if link_el is not None else None
-                    # 過濾超過 24 小時的新聞
-                    is_today = True
-                    if pub_el is not None and pub_el.text:
-                        try:
-                            pub_dt = email.utils.parsedate_to_datetime(pub_el.text)
-                            if int(pub_dt.timestamp()) < cutoff_ts:
-                                is_today = False
-                        except Exception:
-                            pass
-                    if is_today and len(title) > 5:
-                        desc_el = item.find('description')
-                        snippet = re.sub(r'<[^>]+>', '', desc_el.text or '') if desc_el is not None else ''
-                        headlines.append({
-                            'title': title,
-                            'snippet': snippet[:150],
-                            'source': label,
-                            'link': link
-                        })
-        except Exception:
-            pass
 
-    # 去重（依標題）
-    seen = set()
-    unique = []
+async def fetch_google_rss_market(site_domain: str, source_name: str) -> list:
+    """共用 RSS 爬蟲：與個股分析同一套架構，關鍵字改為「台股 股市」（不過濾個股）"""
+    try:
+        query = requests.utils.quote(f'"台股" OR "股市" site:{site_domain}')
+        rss_url = f"https://news.google.com/rss/search?q={query}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
+        response = await asyncio.to_thread(
+            requests.get, rss_url, timeout=10, headers={"User-Agent": get_ua()}
+        )
+        if response.status_code != 200:
+            return []
+        root = ET.fromstring(response.text)
+        data = []
+        cutoff_ts = int(time.time()) - 86400  # 最近 24 小時
+        for item in root.findall('.//item'):
+            title_el = item.find('title')
+            link_el = item.find('link')
+            pub_el = item.find('pubDate')
+            title = title_el.text.split(' - ')[0].strip() if title_el is not None and title_el.text else ''
+            link = link_el.text if link_el is not None else None
+            # 時效過濾
+            is_fresh = True
+            if pub_el is not None and pub_el.text:
+                try:
+                    pub_dt = email.utils.parsedate_to_datetime(pub_el.text)
+                    if not is_within_recent_days(pub_dt, 1):
+                        is_fresh = False
+                except Exception:
+                    pass
+            if not is_fresh or len(title) <= 5:
+                continue
+            desc_el = item.find('description')
+            snippet = re.sub(r'<[^>]+>', '', desc_el.text or '') if desc_el is not None else ''
+            data.append({
+                'title': title,
+                'snippet': snippet[:150],
+                'source': source_name,
+                'link': link
+            })
+        return data[:3]
+    except Exception:
+        return []
+
+
+async def fetch_market_headlines_today() -> list:
+    """抓取當日台股市場頭條新聞。
+    
+    共用個股分析的相同媒體來源（共 10 路），
+    以 asyncio.gather 全部並行，比序列快 3-5 倍。
+    """
+    # 10 路並行：鉅亨網分類 API + 9 家 Google News RSS（與個股分析同一批媒體）
+    results = await asyncio.gather(
+        scrape_anue_market(),
+        fetch_google_rss_market("money.udn.com",         "經濟日報"),
+        fetch_google_rss_market("ec.ltn.com.tw",         "自由財經"),
+        fetch_google_rss_market("ctee.com.tw",           "工商時報"),
+        fetch_google_rss_market("chinatimes.com",        "中時新聞"),
+        fetch_google_rss_market("ettoday.net",           "ETtoday"),
+        fetch_google_rss_market("news.tvbs.com.tw",      "TVBS新聞"),
+        fetch_google_rss_market("businesstoday.com.tw",  "今周刊"),
+        fetch_google_rss_market("wealth.com.tw",         "財訊"),
+        fetch_google_rss_market("storm.mg",              "風傳媒"),
+    )
+
+    # 合併所有結果並去重（依標題前 30 字）
+    headlines = [h for batch in results for h in batch]
+    seen, unique = set(), []
     for h in headlines:
         key = h['title'][:30]
         if key not in seen:
             seen.add(key)
             unique.append(h)
 
-    return unique[:25]  # 最多 25 則給 AI
+    return unique[:30]  # 最多 30 則給 AI
 
 
 def summarize_market_with_gemini(api_key: str, headlines: list) -> str:
