@@ -359,6 +359,147 @@ async def run_analysis(stock_code, stock_name, day_range):
     )
 
 # ===========================
+# 3b. 今日股市焦點模組
+# ===========================
+async def fetch_market_headlines_today():
+    """抓取當日台股市場頭條新聞（多來源）"""
+    from urllib.parse import quote_plus
+    import email.utils
+    from datetime import datetime, timezone
+
+    today = datetime.now(timezone.utc)
+    headlines = []
+
+    # 來源 1：鉅亨網市場熱門新聞（今日）
+    try:
+        url = "https://ess.api.cnyes.com/ess/api/v1/news/category/tw_stock?limit=20&page=1"
+        headers = {
+            "User-Agent": get_ua(),
+            "Referer": "https://www.cnyes.com/"
+        }
+        resp = await asyncio.to_thread(requests.get, url, headers=headers, timeout=8)
+        if resp.status_code == 200:
+            data = resp.json()
+            items = data.get('data', {}).get('items', [])
+            cutoff = int(time.time()) - 86400  # 最近 24 小時
+            for item in items:
+                if item.get('publishAt', 0) < cutoff:
+                    continue
+                title = item.get('title', '').strip()
+                summary = item.get('summary') or ''
+                news_id = item.get('newsId')
+                link = f"https://news.cnyes.com/news/id/{news_id}" if news_id else None
+                if title:
+                    headlines.append({
+                        'title': title,
+                        'snippet': summary[:150],
+                        'source': '鉅亨網',
+                        'link': link
+                    })
+    except Exception:
+        pass
+
+    # 來源 2：Google News RSS — 台灣股市今日焦點
+    rss_queries = [
+        ("台灣股市 台股", "台股綜合"),
+        ("台積電 聯發科 股價", "科技龍頭"),
+        ("法人買超 外資 投信", "法人動態"),
+    ]
+    for q, label in rss_queries:
+        try:
+            encoded = quote_plus(q)
+            rss_url = f"https://news.google.com/rss/search?q={encoded}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
+            resp = await asyncio.to_thread(requests.get, rss_url, headers={"User-Agent": get_ua()}, timeout=8)
+            if resp.status_code == 200:
+                root = ET.fromstring(resp.text)
+                cutoff_ts = int(time.time()) - 86400
+                for item in root.findall('.//item'):
+                    title_el = item.find('title')
+                    link_el = item.find('link')
+                    pub_el = item.find('pubDate')
+                    title = title_el.text.split(' - ')[0].strip() if title_el is not None and title_el.text else ''
+                    link = link_el.text if link_el is not None else None
+                    # 過濾超過 24 小時的新聞
+                    is_today = True
+                    if pub_el is not None and pub_el.text:
+                        try:
+                            pub_dt = email.utils.parsedate_to_datetime(pub_el.text)
+                            if int(pub_dt.timestamp()) < cutoff_ts:
+                                is_today = False
+                        except Exception:
+                            pass
+                    if is_today and len(title) > 5:
+                        desc_el = item.find('description')
+                        snippet = re.sub(r'<[^>]+>', '', desc_el.text or '') if desc_el is not None else ''
+                        headlines.append({
+                            'title': title,
+                            'snippet': snippet[:150],
+                            'source': label,
+                            'link': link
+                        })
+        except Exception:
+            pass
+
+    # 去重（依標題）
+    seen = set()
+    unique = []
+    for h in headlines:
+        key = h['title'][:30]
+        if key not in seen:
+            seen.add(key)
+            unique.append(h)
+
+    return unique[:25]  # 最多 25 則給 AI
+
+
+def summarize_market_with_gemini(api_key: str, headlines: list) -> str:
+    """呼叫 Gemini AI 總結今日台股市場焦點"""
+    model_name = get_available_model(api_key)
+    if not model_name:
+        model_name = "models/gemini-pro"
+
+    news_text = ""
+    for i, h in enumerate(headlines, 1):
+        snippet = h.get('snippet') or ''
+        news_text += f"{i}. [{h['source']}] {h['title']}\n   摘要: {snippet}\n"
+
+    today_str = time.strftime('%Y年%m月%d日', time.localtime())
+    prompt = f"""
+你是一位資深的台灣股市分析師。今天是 {today_str}。
+以下是今日台灣股市的多來源頭條新聞（包含標題與摘要）：
+
+{news_text}
+
+請依據上述新聞，以繁體中文輸出一份「今日台股市場焦點摘要」，格式如下：
+
+📊 **今日大盤氛圍**：（用 2-3 句描述今日整體市場多空氣氛）
+
+🔥 **三大核心焦點**：
+1. （焦點一：最重要的市場事件，含影響分析）
+2. （焦點二：法人動態或資金流向）
+3. （焦點三：產業/個股值得注意的訊號）
+
+⚠️ **潛在風險提示**：（列出 1-2 個今日需注意的下行風險）
+
+💡 **投資人關注重點**：（給散戶的一句話操作建議）
+
+請保持客觀、不誇大，以數據和事實為主。
+    """
+
+    try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/{model_name}:generateContent?key={api_key}"
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+        resp = requests.post(url, headers={'Content-Type': 'application/json'}, json=payload, timeout=60)
+        if resp.status_code == 200:
+            result = resp.json()
+            if 'candidates' in result and result['candidates']:
+                return result['candidates'][0]['content']['parts'][0]['text']
+        return f"AI 回應錯誤 ({resp.status_code})：{resp.text[:200]}"
+    except Exception as e:
+        return f"AI 請求失敗：{e}"
+
+
+# ===========================
 # 4. 背景分析引擎
 # ===========================
 import threading
@@ -573,6 +714,49 @@ st.markdown(
         gap: 24px !important; 
     }
 
+    /* 今日股市焦點按鈕 */
+    .focus-btn-wrapper div[data-testid="stButton"] button {
+        background: linear-gradient(135deg, #F59E0B 0%, #EF4444 100%) !important;
+        border: none !important;
+        border-radius: 16px !important;
+        color: #ffffff !important;
+        font-weight: 700 !important;
+        font-size: 15px !important;
+        letter-spacing: 0.3px;
+        transition: opacity 0.2s ease !important;
+        box-shadow: 0 4px 14px rgba(245,158,11,0.35) !important;
+    }
+    .focus-btn-wrapper div[data-testid="stButton"] button:hover {
+        opacity: 0.88 !important;
+    }
+    .focus-btn-wrapper div[data-testid="stButton"] button p {
+        color: #ffffff !important;
+        font-weight: 700 !important;
+    }
+
+    /* 今日焦點卡片 */
+    .focus-card {
+        background: linear-gradient(135deg, rgba(245,158,11,0.08) 0%, rgba(239,68,68,0.05) 100%);
+        border: 1px solid rgba(245,158,11,0.25);
+        border-radius: 20px;
+        padding: 24px 28px;
+        margin: 16px 0;
+    }
+    .focus-headline-row {
+        margin-bottom: 10px;
+        padding: 12px 16px;
+        border-radius: 12px;
+        background: var(--surface-color);
+        border: 1px solid var(--surface-border);
+        font-size: 13.5px;
+        transition: transform 0.18s ease, box-shadow 0.18s ease;
+    }
+    .focus-headline-row:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        border-color: rgba(245,158,11,0.4);
+    }
+
     /* Expander UI Fixes */
     [data-testid="stExpander"] {
         background: var(--surface-color);
@@ -612,6 +796,15 @@ if 'current_slot_idx' not in st.session_state:
     st.session_state.current_slot_idx = 0
 if 'current_view' not in st.session_state:
     st.session_state.current_view = None
+# 今日股市焦點狀態
+if 'market_focus' not in st.session_state:
+    st.session_state.market_focus = {
+        'status': 'idle',   # idle | running | done | error
+        'headlines': [],
+        'summary': '',
+        'error': '',
+        'fetched_date': ''
+    }
 
 search_panel = get_mobile_search_panel_config()
 active_key = resolve_active_api_key(SYSTEM_API_KEY)
@@ -835,6 +1028,116 @@ if st.session_state.current_view and st.session_state.current_view in st.session
                     """, unsafe_allow_html=True)
             else: 
                 st.info(f"無新聞資料 (最近 {selected_day_range} 天無重要新聞)")
+
+# ===========================
+# 今日股市焦點 區塊
+# ===========================
+st.markdown("---")
+st.markdown(
+    """
+    <div style='text-align:center; padding: 8px 0 4px 0;'>
+        <span style='color:#94A3B8; font-size:13px;'>⬇️ 不分個股，掃描整體台股市場</span>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+# 今日股市焦點按鈕
+col_focus_l, col_focus_c, col_focus_r = st.columns([1, 3, 1])
+with col_focus_c:
+    st.markdown('<div class="focus-btn-wrapper">', unsafe_allow_html=True)
+    focus_btn = st.button(
+        "📡 今日股市焦點　掃描 & AI 總結",
+        key="market_focus_btn",
+        use_container_width=True,
+    )
+    st.markdown('</div>', unsafe_allow_html=True)
+
+if focus_btn:
+    # 每日只抓一次，若已有當日資料則直接顯示
+    today_key = time.strftime('%Y-%m-%d')
+    mf = st.session_state.market_focus
+    if mf['status'] == 'done' and mf.get('fetched_date') == today_key:
+        st.toast("✅ 已顯示今日最新焦點（快取中）")
+    else:
+        st.session_state.market_focus = {
+            'status': 'running',
+            'headlines': [],
+            'summary': '',
+            'error': '',
+            'fetched_date': today_key
+        }
+        st.rerun()
+
+# 執行抓取（同步在主線程完成，避免 thread 衝突）
+mf = st.session_state.market_focus
+if mf['status'] == 'running':
+    with st.spinner("📡 正在掃描今日台股市場頭條新聞，請稍候..."):
+        try:
+            today_headlines = asyncio.run(fetch_market_headlines_today())
+            ai_summary = ""
+            if active_key and today_headlines:
+                ai_summary = summarize_market_with_gemini(
+                    resolve_active_api_key(SYSTEM_API_KEY), today_headlines
+                )
+            elif not active_key:
+                ai_summary = "⚠️ 未設定 AI 金鑰，無法進行 AI 總結，僅顯示頭條新聞。"
+            elif not today_headlines:
+                ai_summary = "⚠️ 今日暫無抓取到市場頭條，請稍後再試。"
+
+            st.session_state.market_focus = {
+                'status': 'done',
+                'headlines': today_headlines,
+                'summary': ai_summary,
+                'error': '',
+                'fetched_date': time.strftime('%Y-%m-%d')
+            }
+        except Exception as e:
+            st.session_state.market_focus['status'] = 'error'
+            st.session_state.market_focus['error'] = str(e)
+    st.rerun()
+
+# 顯示結果
+mf = st.session_state.market_focus
+if mf['status'] == 'done':
+    today_str = time.strftime('%Y年%m月%d日')
+    st.markdown(
+        f"""
+        <div class='focus-card'>
+            <div style='font-size:18px; font-weight:700; color:#F59E0B; margin-bottom:6px;'>
+                📡 今日股市焦點 &nbsp;<span style='font-size:13px; color:#94A3B8; font-weight:400;'>({today_str} · {len(mf['headlines'])} 則頭條)</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # AI 總結
+    if mf['summary']:
+        st.subheader("🤖 AI 市場總結")
+        st.markdown(mf['summary'])
+        st.divider()
+
+    # 頭條新聞列表
+    if mf['headlines']:
+        st.subheader(f"📰 今日頭條 ({len(mf['headlines'])} 則)")
+        for h in mf['headlines']:
+            snippet = (h.get('snippet') or '')[:60]
+            if len(h.get('snippet') or '') > 60:
+                snippet += '...'
+            link = h.get('link') or f"https://www.google.com/search?q={h['title']}"
+            st.markdown(
+                f"""
+                <div class='focus-headline-row'>
+                    <b style='color:#F59E0B;'>[{h['source']}]</b>
+                    <a href='{link}' target='_blank' style='text-decoration:none; font-weight:600; color:#F8FAFC;'>{h['title']}</a><br>
+                    <small style='color:#94A3B8;'>{snippet}</small>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+elif mf['status'] == 'error':
+    st.error(f"❌ 抓取今日焦點失敗：{mf['error']}")
 
 # 定期更新檢查
 if any(t['status'] == 'running' for t in st.session_state.tasks.values()):
