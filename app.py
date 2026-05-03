@@ -16,6 +16,7 @@ from market_data import merge_market_scan_data
 from news_relevance import build_google_rss_url, is_relevant_news_text
 from time_window import DEFAULT_DAY_RANGE, clamp_day_range, is_within_recent_days
 from ui_helpers import (
+    build_dashboard_loading_markup,
     build_dashboard_input_overlay_markup,
     build_dashboard_result_markup,
     build_dashboard_status_markup,
@@ -983,7 +984,16 @@ if st.session_state.current_view and st.session_state.current_view in st.session
             unsafe_allow_html=True,
         )
         st.markdown(
-            (
+            build_dashboard_loading_markup(
+                stock_name=task["stock_name"],
+                stock_code=task["stock_code"],
+                progress=task["progress"],
+            ),
+            unsafe_allow_html=True,
+        )
+        if False:
+            st.markdown(
+                (
                 "<div class='dashboard-empty'>"
                 f"{task['stock_name']} ({task['stock_code']}) 正在分析中，"
                 f"目前進度 {task['progress']}%。"

@@ -2,6 +2,7 @@ import unittest
 from pathlib import Path
 
 from ui_helpers import (
+    build_dashboard_loading_markup,
     build_dashboard_input_overlay_markup,
     build_dashboard_result_markup,
     build_dashboard_status_markup,
@@ -123,6 +124,15 @@ class UiHelpersTests(unittest.TestCase):
             css,
         )
 
+    def test_build_dashboard_theme_css_includes_animated_loading_bar_styles(self):
+        css = build_dashboard_theme_css()
+
+        self.assertIn(".analysis-loading-track {", css)
+        self.assertIn("mix-blend-mode: difference;", css)
+        self.assertIn("-webkit-box-reflect: below 1px", css)
+        self.assertIn("@keyframes gradientAnimation", css)
+        self.assertIn("width: var(--loading-progress, 0%);", css)
+
     def test_build_dashboard_input_overlay_markup_renders_escaped_value(self):
         markup = build_dashboard_input_overlay_markup("<2330>", "2330")
 
@@ -181,6 +191,11 @@ class UiHelpersTests(unittest.TestCase):
 
         self.assertIn("build_dashboard_input_overlay_markup(", app_source)
 
+    def test_app_uses_loading_markup_for_running_analysis_state(self):
+        app_source = Path("app.py").read_text(encoding="utf-8")
+
+        self.assertIn("build_dashboard_loading_markup(", app_source)
+
     def test_app_starts_with_blank_stock_inputs_and_no_native_placeholder_copy(self):
         app_source = Path("app.py").read_text(encoding="utf-8")
 
@@ -188,6 +203,19 @@ class UiHelpersTests(unittest.TestCase):
         self.assertIn('default_inputs = list(st.session_state.get("last_inputs", ["", "", ""]))[:3]', app_source)
         self.assertIn('placeholder=""', app_source)
         self.assertNotIn('["2330", "2317", "0050"]', app_source)
+
+    def test_build_dashboard_loading_markup_renders_clamped_progress_bar(self):
+        markup = build_dashboard_loading_markup(
+            stock_name="台積電",
+            stock_code="2330",
+            progress=142,
+        )
+
+        self.assertIn("台積電", markup)
+        self.assertIn("2330", markup)
+        self.assertIn("抓取資料中....", markup)
+        self.assertIn("100%", markup)
+        self.assertIn("--loading-progress: 100%;", markup)
 
 
 if __name__ == "__main__":

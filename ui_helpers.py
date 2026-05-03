@@ -757,6 +757,90 @@ div[data-testid="stForm"] button:hover {
     margin-top: 0;
 }
 
+@keyframes gradientAnimation {
+    0% {
+        background-position: 0 0;
+    }
+
+    100% {
+        background-position: 200% 0;
+    }
+}
+
+.analysis-loading-shell {
+    margin: 4px auto 0;
+    padding: 24px 20px 18px;
+    border-radius: 20px;
+    background: linear-gradient(180deg, rgba(10, 20, 42, 0.95), rgba(8, 17, 34, 0.96));
+    border: 1px solid rgba(84, 132, 235, 0.18);
+    box-shadow: var(--shadow-soft);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+.analysis-loading-meta {
+    color: #9fbeff;
+    font-size: 0.92rem;
+    font-weight: 700;
+    text-align: center;
+}
+
+.analysis-loading-track {
+    position: relative;
+    width: min(100%, 320px);
+    max-width: 320px;
+    height: 34px;
+    border-radius: 12px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 0 3px rgba(255, 255, 255, 0.18);
+    -webkit-box-reflect: below 1px linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, 0),
+        rgba(0, 0, 0, 0.32)
+    );
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    isolation: isolate;
+}
+
+.analysis-loading-fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: var(--loading-progress, 0%);
+    height: 100%;
+    background: linear-gradient(to right, #ffffff, #111111);
+    background-size: 200% 100%;
+    border-radius: inherit;
+    box-shadow: 0 0 3px rgba(255, 255, 255, 0.26);
+    animation: gradientAnimation 10s linear infinite reverse;
+}
+
+.analysis-loading-text {
+    position: relative;
+    z-index: 1;
+    color: white;
+    mix-blend-mode: difference;
+    text-align: center;
+    margin: 0;
+    font-size: 12px;
+    line-height: 34px;
+    font-family: "Plus Jakarta Sans", "Noto Sans TC", sans-serif;
+    text-shadow: 0 0 3px;
+    padding: 0 12px;
+    letter-spacing: 5px;
+}
+
+.analysis-loading-foot {
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+}
+
 @media (max-width: 760px) {
     .dashboard-topbar,
     .panel-heading,
@@ -800,6 +884,29 @@ def build_dashboard_status_markup(title: str, detail: str) -> str:
         "    </div>"
         "  </div>"
         "</div>"
+    )
+
+
+def build_dashboard_loading_markup(
+    stock_name: str,
+    stock_code: str,
+    progress: int | float,
+    message: str = "抓取資料中....",
+) -> str:
+    safe_stock_name = escape(stock_name or "分析任務")
+    safe_stock_code = escape(stock_code or "--")
+    safe_message = escape(message or "抓取資料中....")
+    safe_progress = max(0, min(100, int(progress or 0)))
+
+    return (
+        "<section class='analysis-loading-shell'>"
+        f"  <div class='analysis-loading-meta'>{safe_stock_name} ({safe_stock_code})</div>"
+        f"  <div class='analysis-loading-track' style='--loading-progress: {safe_progress}%;'>"
+        "    <div class='analysis-loading-fill'></div>"
+        f"    <p class='analysis-loading-text'>{safe_message}</p>"
+        "  </div>"
+        f"  <div class='analysis-loading-foot'>目前進度 {safe_progress}%</div>"
+        "</section>"
     )
 
 
