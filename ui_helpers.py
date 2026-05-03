@@ -444,8 +444,8 @@ div[data-testid="stTextInput"] input::placeholder {
 }
 
 div[data-testid="stTextInput"] input:focus::placeholder {
-    color: rgba(120, 120, 120, 0.48) !important;
-    -webkit-text-fill-color: rgba(120, 120, 120, 0.48) !important;
+    color: transparent !important;
+    -webkit-text-fill-color: transparent !important;
 }
 
 div[data-testid="stTextInput"] input::selection {

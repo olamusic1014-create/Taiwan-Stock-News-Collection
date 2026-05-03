@@ -113,6 +113,16 @@ class UiHelpersTests(unittest.TestCase):
         self.assertIn("opacity: 0;", css)
         self.assertIn("input::selection {", css)
 
+    def test_build_dashboard_theme_css_keeps_native_placeholder_hidden_while_editing(self):
+        css = build_dashboard_theme_css()
+
+        self.assertIn(
+            'div[data-testid="stTextInput"] input:focus::placeholder {\n'
+            "    color: transparent !important;\n"
+            "    -webkit-text-fill-color: transparent !important;",
+            css,
+        )
+
     def test_build_dashboard_input_overlay_markup_renders_escaped_value(self):
         markup = build_dashboard_input_overlay_markup("<2330>", "2330")
 
@@ -170,6 +180,14 @@ class UiHelpersTests(unittest.TestCase):
         app_source = Path("app.py").read_text(encoding="utf-8")
 
         self.assertIn("build_dashboard_input_overlay_markup(", app_source)
+
+    def test_app_starts_with_blank_stock_inputs_and_no_native_placeholder_copy(self):
+        app_source = Path("app.py").read_text(encoding="utf-8")
+
+        self.assertIn('st.session_state.last_inputs = ["", "", ""]', app_source)
+        self.assertIn('default_inputs = list(st.session_state.get("last_inputs", ["", "", ""]))[:3]', app_source)
+        self.assertIn('placeholder=""', app_source)
+        self.assertNotIn('["2330", "2317", "0050"]', app_source)
 
 
 if __name__ == "__main__":

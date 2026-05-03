@@ -631,7 +631,7 @@ if 'current_slot_idx' not in st.session_state:
 if 'current_view' not in st.session_state:
     st.session_state.current_view = None
 if 'last_inputs' not in st.session_state:
-    st.session_state.last_inputs = ["2330", "2317", "0050"]
+    st.session_state.last_inputs = ["", "", ""]
 if 'last_invalid_inputs' not in st.session_state:
     st.session_state.last_invalid_inputs = []
 if 'last_resolved_inputs' not in st.session_state:
@@ -662,7 +662,7 @@ else:
         len(st.session_state.get("stock_dict", {})),
     )
 
-default_inputs = list(st.session_state.get("last_inputs", ["2330", "2317", "0050"]))[:3]
+default_inputs = list(st.session_state.get("last_inputs", ["", "", ""]))[:3]
 while len(default_inputs) < 3:
     default_inputs.append("")
 tracked_input_count = len(normalize_stock_inputs(default_inputs))
@@ -722,7 +722,7 @@ with st.form("mobile_search_form"):
             input_value = st.text_input(
                 search_panel.input_labels[idx],
                 value=default_inputs[idx],
-                placeholder="2330",
+                placeholder="",
                 key=f"dashboard_symbol_{idx}",
             )
             raw_inputs.append(input_value)
