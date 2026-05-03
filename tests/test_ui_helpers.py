@@ -204,6 +204,14 @@ class UiHelpersTests(unittest.TestCase):
         self.assertIn("except ImportError:", app_source)
         self.assertIn("safe_progress = max(0, min(100, int(progress or 0)))", app_source)
 
+    def test_app_injects_loading_style_patch_for_deploy_fallback(self):
+        app_source = Path("app.py").read_text(encoding="utf-8")
+
+        self.assertIn("APP_LOADING_BAR_STYLE_PATCH", app_source)
+        self.assertIn(".analysis-loading-track", app_source)
+        self.assertIn("mix-blend-mode: difference;", app_source)
+        self.assertIn("st.markdown(APP_LOADING_BAR_STYLE_PATCH, unsafe_allow_html=True)", app_source)
+
     def test_app_starts_with_blank_stock_inputs_and_no_native_placeholder_copy(self):
         app_source = Path("app.py").read_text(encoding="utf-8")
 

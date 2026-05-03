@@ -51,6 +51,95 @@ except ImportError:
             "</section>"
         )
 
+
+APP_LOADING_BAR_STYLE_PATCH = """
+<style>
+@keyframes gradientAnimation {
+    0% {
+        background-position: 0 0;
+    }
+
+    100% {
+        background-position: 200% 0;
+    }
+}
+
+.analysis-loading-shell {
+    margin: 4px auto 0;
+    padding: 24px 20px 18px;
+    border-radius: 20px;
+    background: linear-gradient(180deg, rgba(10, 20, 42, 0.95), rgba(8, 17, 34, 0.96));
+    border: 1px solid rgba(84, 132, 235, 0.18);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+.analysis-loading-meta {
+    color: #9fbeff;
+    font-size: 0.92rem;
+    font-weight: 700;
+    text-align: center;
+}
+
+.analysis-loading-track {
+    position: relative;
+    width: min(100%, 320px);
+    max-width: 320px;
+    height: 34px;
+    border-radius: 12px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 0 3px rgba(255, 255, 255, 0.18);
+    -webkit-box-reflect: below 1px linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, 0),
+        rgba(0, 0, 0, 0.32)
+    );
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    isolation: isolate;
+}
+
+.analysis-loading-fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: var(--loading-progress, 0%);
+    height: 100%;
+    background: linear-gradient(to right, #ffffff, #111111);
+    background-size: 200% 100%;
+    border-radius: inherit;
+    box-shadow: 0 0 3px rgba(255, 255, 255, 0.26);
+    animation: gradientAnimation 10s linear infinite reverse;
+}
+
+.analysis-loading-text {
+    position: relative;
+    z-index: 1;
+    color: white;
+    mix-blend-mode: difference;
+    text-align: center;
+    margin: 0;
+    font-size: 12px;
+    line-height: 34px;
+    font-family: "Plus Jakarta Sans", "Noto Sans TC", sans-serif;
+    text-shadow: 0 0 3px;
+    padding: 0 12px;
+    letter-spacing: 5px;
+}
+
+.analysis-loading-foot {
+    color: #a8b7da;
+    font-size: 0.82rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+}
+</style>
+""".strip()
+
 # ===========================
 # 0. 環境準備
 # ===========================
@@ -646,6 +735,7 @@ def queue_analysis_task(stock_code, stock_name, day_range):
 # ===========================
 st.set_page_config(page_title="股市新聞爬蟲 AI 分析台", page_icon="📈", layout="wide")
 st.markdown(build_dashboard_theme_css(), unsafe_allow_html=True)
+st.markdown(APP_LOADING_BAR_STYLE_PATCH, unsafe_allow_html=True)
 
 if 'tasks' not in st.session_state:
     st.session_state.tasks = {}
