@@ -368,9 +368,10 @@ div[data-testid="stTextInput"] [data-baseweb="base-input"] > div {
     background: transparent !important;
     border-radius: 15px !important;
     overflow: hidden;
-    padding: 0 !important;
+    padding: 0 1em !important;
     min-height: 76px !important;
     width: 100%;
+    box-sizing: border-box;
     display: flex;
     align-items: center;
 }
@@ -393,21 +394,21 @@ div[data-testid="stSelectSlider"] label p {
 div[data-testid="stTextInput"] input {
     width: 100% !important;
     box-sizing: border-box;
-    height: 76px !important;
-    min-height: 76px !important;
-    line-height: 1 !important;
+    height: 100% !important;
+    min-height: 100% !important;
+    line-height: normal !important;
     border-radius: 15px;
-    padding: 0 1em 8px !important;
+    padding: 0 !important;
     background-color: transparent !important;
     border: none !important;
     outline: none !important;
     box-shadow: none !important;
     margin: 0 !important;
     color: var(--text-primary);
-    font-size: 2.1rem !important;
+    font-size: 1.89rem !important;
     font-weight: 700;
     display: block;
-    transform: translateY(-4px);
+    transform: translateY(-1px);
     align-self: center;
 }
 
