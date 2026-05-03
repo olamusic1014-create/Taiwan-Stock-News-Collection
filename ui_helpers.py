@@ -357,6 +357,9 @@ div[data-testid="stTextInput"] [data-baseweb="base-input"] {
     box-shadow: inset 2px 5px 10px rgba(0,0,0,0.3);
     transition: 300ms ease-in-out;
     overflow: hidden;
+    min-height: 76px !important;
+    display: flex;
+    align-items: center;
 }
 
 div[data-testid="stTextInput"] [data-baseweb="base-input"] > div {
@@ -366,6 +369,8 @@ div[data-testid="stTextInput"] [data-baseweb="base-input"] > div {
     border-radius: 15px !important;
     overflow: hidden;
     padding: 0 !important;
+    min-height: 76px !important;
+    width: 100%;
     display: flex;
     align-items: center;
 }
@@ -388,9 +393,9 @@ div[data-testid="stSelectSlider"] label p {
 div[data-testid="stTextInput"] input {
     width: 100% !important;
     box-sizing: border-box;
-    height: 60px !important;
-    min-height: 60px;
-    line-height: 60px !important;
+    height: auto !important;
+    min-height: 0 !important;
+    line-height: 1.1 !important;
     border-radius: 15px;
     padding: 0 1em !important;
     background-color: transparent !important;
@@ -399,9 +404,11 @@ div[data-testid="stTextInput"] input {
     box-shadow: none !important;
     margin: 0 !important;
     color: var(--text-primary);
-    font-size: 1.05rem;
-    font-weight: 600;
+    font-size: 2.1rem !important;
+    font-weight: 700;
     display: block;
+    transform: translateY(-2px);
+    align-self: center;
 }
 
 div[data-testid="stTextInput"] input:focus {

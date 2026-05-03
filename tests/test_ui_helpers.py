@@ -84,14 +84,17 @@ class UiHelpersTests(unittest.TestCase):
         self.assertIn(':focus-within {', css)
         self.assertIn("transform: scale(1.05);", css)
 
-    def test_build_dashboard_theme_css_removes_streamlit_input_shell_and_centers_text_vertically(self):
+    def test_build_dashboard_theme_css_rebuilds_stock_input_shell_for_large_centered_text(self):
         css = build_dashboard_theme_css()
 
         self.assertIn('[data-baseweb="base-input"] > div {', css)
         self.assertIn("border: none !important;", css)
         self.assertIn("overflow: hidden;", css)
-        self.assertIn("height: 60px !important;", css)
-        self.assertIn("line-height: 60px !important;", css)
+        self.assertIn("min-height: 76px !important;", css)
+        self.assertIn("font-size: 2.1rem !important;", css)
+        self.assertIn("line-height: 1.1 !important;", css)
+        self.assertIn("transform: translateY(-2px);", css)
+        self.assertNotIn("line-height: 60px !important;", css)
 
     def test_build_dashboard_status_markup_keeps_only_copy_without_chart_stub(self):
         markup = build_dashboard_status_markup("資料庫已就緒", "支援即時新聞爬取")
