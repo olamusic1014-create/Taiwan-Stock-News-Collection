@@ -30,6 +30,20 @@ def build_report_markup(report_text: str) -> str:
     )
 
 
+def build_dashboard_input_overlay_markup(value: str, placeholder: str) -> str:
+    raw_value = value or ""
+    has_value = bool(raw_value.strip())
+    display_value = raw_value if has_value else placeholder
+    value_class = "stock-input-overlay-value"
+    if not has_value:
+        value_class += " is-placeholder"
+    return (
+        "<div class='stock-input-overlay'>"
+        f"<div class='{value_class}'>{escape(display_value)}</div>"
+        "</div>"
+    )
+
+
 def normalize_stock_inputs(values: list[str], limit: int = 3) -> list[str]:
     normalized: list[str] = []
     seen: set[str] = set()
@@ -349,6 +363,10 @@ div[data-testid="stTextInput"] > div {
     width: 100%;
 }
 
+div[data-testid="stTextInput"] + div[data-testid="stMarkdownContainer"] {
+    margin-top: 0 !important;
+}
+
 div[data-testid="stTextInput"] [data-baseweb="base-input"] {
     border: none !important;
     outline: none !important;
@@ -403,17 +421,54 @@ div[data-testid="stTextInput"] input {
     outline: none !important;
     box-shadow: none !important;
     margin: 0 !important;
-    color: var(--text-primary);
+    color: transparent !important;
     font-size: 1.89rem !important;
     font-weight: 700;
     text-align: center !important;
-    transform: translateY(-6px);
+    -webkit-text-fill-color: transparent !important;
+    caret-color: var(--text-primary);
     -webkit-appearance: none;
     appearance: none;
     display: block;
 }
 
 div[data-testid="stTextInput"] input:focus {
+    color: transparent !important;
+    -webkit-text-fill-color: transparent !important;
+    caret-color: #081226;
+}
+
+div[data-testid="stTextInput"] input::placeholder {
+    color: transparent !important;
+    -webkit-text-fill-color: transparent !important;
+}
+
+.stock-input-overlay {
+    position: relative;
+    z-index: 3;
+    height: 80px;
+    margin-top: -80px;
+    margin-bottom: -80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+
+.stock-input-overlay-value {
+    color: var(--text-primary);
+    font-size: 1.89rem !important;
+    font-weight: 700;
+    line-height: 1;
+    text-align: center !important;
+    transform: translateY(-6px);
+}
+
+.stock-input-overlay-value.is-placeholder {
+    color: rgba(248, 251, 255, 0.34);
+}
+
+div[data-testid="stTextInput"]:focus-within + div[data-testid="stMarkdownContainer"] .stock-input-overlay-value {
     color: #081226;
 }
 

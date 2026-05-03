@@ -2,6 +2,7 @@ import unittest
 from pathlib import Path
 
 from ui_helpers import (
+    build_dashboard_input_overlay_markup,
     build_dashboard_result_markup,
     build_dashboard_status_markup,
     build_dashboard_theme_css,
@@ -85,26 +86,35 @@ class UiHelpersTests(unittest.TestCase):
         self.assertIn("background-color: rgba(245, 248, 255, 0.98) !important;", css)
         self.assertNotIn("transform: scale(1.05);", css)
 
-    def test_build_dashboard_theme_css_rebuilds_stock_input_shell_for_large_centered_text(self):
+    def test_build_dashboard_theme_css_rebuilds_stock_input_shell_for_overlay_text(self):
         css = build_dashboard_theme_css()
 
-        self.assertIn('[data-baseweb="base-input"] > div {', css)
-        self.assertIn("border: none !important;", css)
-        self.assertIn("overflow: hidden;", css)
-        self.assertIn("min-height: 80px !important;", css)
-        self.assertIn("padding: 0 !important;", css)
+        self.assertIn(".stock-input-overlay {", css)
+        self.assertIn("margin-top: -80px;", css)
+        self.assertIn("margin-bottom: -80px;", css)
+        self.assertIn("pointer-events: none;", css)
+        self.assertIn(".stock-input-overlay-value {", css)
         self.assertIn("font-size: 1.89rem !important;", css)
-        self.assertIn("height: 80px !important;", css)
-        self.assertIn("line-height: 80px !important;", css)
-        self.assertIn("text-align: center !important;", css)
         self.assertIn("transform: translateY(-6px);", css)
-        self.assertIn("-webkit-appearance: none;", css)
-        self.assertIn("appearance: none;", css)
-        self.assertIn("padding: 0 1em !important;", css)
-        self.assertNotIn("line-height: 60px !important;", css)
-        self.assertNotIn("height: 100% !important;", css)
-        self.assertNotIn("line-height: normal !important;", css)
-        self.assertNotIn("transform: translateY(-1px);", css)
+        self.assertIn("color: transparent !important;", css)
+        self.assertIn("-webkit-text-fill-color: transparent !important;", css)
+        self.assertIn("caret-color: var(--text-primary);", css)
+        self.assertIn("text-align: center !important;", css)
+        self.assertIn('div[data-testid="stTextInput"]:focus-within + div[data-testid="stMarkdownContainer"] .stock-input-overlay-value {', css)
+
+    def test_build_dashboard_input_overlay_markup_renders_escaped_value(self):
+        markup = build_dashboard_input_overlay_markup("<2330>", "2330")
+
+        self.assertIn("stock-input-overlay", markup)
+        self.assertIn("stock-input-overlay-value", markup)
+        self.assertIn("&lt;2330&gt;", markup)
+        self.assertNotIn("is-placeholder", markup)
+
+    def test_build_dashboard_input_overlay_markup_uses_placeholder_style_when_empty(self):
+        markup = build_dashboard_input_overlay_markup("", "2330")
+
+        self.assertIn(">2330<", markup)
+        self.assertIn("is-placeholder", markup)
 
     def test_build_dashboard_status_markup_keeps_only_copy_without_chart_stub(self):
         markup = build_dashboard_status_markup("資料庫已就緒", "支援即時新聞爬取")
@@ -144,6 +154,11 @@ class UiHelpersTests(unittest.TestCase):
 
         self.assertLess(focus_index, tasks_index)
         self.assertLess(focus_index, result_index)
+
+    def test_app_renders_stock_input_overlay_after_text_input(self):
+        app_source = Path("app.py").read_text(encoding="utf-8")
+
+        self.assertIn("build_dashboard_input_overlay_markup(", app_source)
 
 
 if __name__ == "__main__":

@@ -16,6 +16,7 @@ from market_data import merge_market_scan_data
 from news_relevance import build_google_rss_url, is_relevant_news_text
 from time_window import DEFAULT_DAY_RANGE, clamp_day_range, is_within_recent_days
 from ui_helpers import (
+    build_dashboard_input_overlay_markup,
     build_dashboard_result_markup,
     build_dashboard_status_markup,
     build_dashboard_theme_css,
@@ -718,13 +719,16 @@ with st.form("mobile_search_form"):
     raw_inputs = []
     for idx, col in enumerate(input_cols):
         with col:
-            raw_inputs.append(
-                st.text_input(
-                    search_panel.input_labels[idx],
-                    value=default_inputs[idx],
-                    placeholder="2330",
-                    key=f"dashboard_symbol_{idx}",
-                )
+            input_value = st.text_input(
+                search_panel.input_labels[idx],
+                value=default_inputs[idx],
+                placeholder="2330",
+                key=f"dashboard_symbol_{idx}",
+            )
+            raw_inputs.append(input_value)
+            st.markdown(
+                build_dashboard_input_overlay_markup(input_value, "2330"),
+                unsafe_allow_html=True,
             )
 
     selected_day_range = st.select_slider(
