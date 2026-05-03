@@ -15,7 +15,14 @@ from browser_support import detect_browser_status, get_launch_kwargs
 from market_data import merge_market_scan_data
 from news_relevance import build_google_rss_url, is_relevant_news_text
 from time_window import DEFAULT_DAY_RANGE, clamp_day_range, is_within_recent_days
-from ui_helpers import build_report_markup, build_source_sections
+from ui_helpers import (
+    build_dashboard_result_markup,
+    build_dashboard_status_markup,
+    build_dashboard_theme_css,
+    build_report_markup,
+    build_source_sections,
+    normalize_stock_inputs,
+)
 from ui_config import get_mobile_search_panel_config, resolve_active_api_key
 
 # ===========================
@@ -573,7 +580,8 @@ def background_task_runner(task_id):
                 "all_news": all_news,
                 "source_sections": source_sections,
                 "ai_report": ai_report,
-                "selected_day_range": selected_day_range
+                "selected_day_range": selected_day_range,
+                "completed_at": time.strftime('%Y/%m/%d %H:%M'),
             }
             task_data['status'] = 'done'
         except Exception as e:
@@ -582,227 +590,36 @@ def background_task_runner(task_id):
             
     asyncio.run(_run())
 
+
+def queue_analysis_task(stock_code, stock_name, day_range):
+    slot_idx = st.session_state.current_slot_idx
+    task_id = f"task_{stock_code}_{int(time.time() * 1000)}"
+
+    st.session_state.tasks_slots[slot_idx] = task_id
+    st.session_state.tasks[task_id] = {
+        "task_id": task_id,
+        "stock_code": stock_code,
+        "stock_name": stock_name,
+        "day_range": day_range,
+        "progress": 0,
+        "status": "running",
+        "result": None,
+    }
+
+    st.session_state.current_slot_idx = (slot_idx + 1) % 3
+    st.session_state.current_view = task_id
+
+    task_thread = threading.Thread(target=background_task_runner, args=(task_id,))
+    add_script_run_ctx(task_thread)
+    task_thread.start()
+
+    return task_id
+
 # ===========================
 # 5. Streamlit 介面 (V15.7)
 # ===========================
-st.set_page_config(page_title="V15.7 AI 投資顧問 (AI裁判版)", page_icon="🛡️", layout="wide")
-st.markdown(
-    """<style>
-    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap');
-
-    /* UI Pro Max: Financial Dashboard Palette & Premium Sans */
-    :root {
-        --bg-color: #020617;
-        --surface-color: #0F172A;
-        --surface-border: #1E293B;
-        --cta-color: #22C55E;
-        --cta-hover: #16a34a;
-        --text-main: #F8FAFC;
-        --text-muted: #94A3B8;
-        --accent-blue: #3B82F6;
-    }
-
-    /* Apply font-family safely */
-    .stApp {
-        font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
-    }
-    
-    /* Ensure Material Symbols are preserved */
-    .material-symbols-rounded, .stIcon, [data-testid="stIconMaterial"], [class*="icon"] {
-        font-family: "Material Symbols Rounded" !important;
-    }
-
-    .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] { 
-        background: var(--bg-color); 
-        color: var(--text-main); 
-    }
-    .block-container { 
-        max-width: 720px; 
-        padding-top: 1.5rem; 
-        padding-bottom: 3rem; 
-    }
-    [data-testid="stSidebar"], [data-testid="collapsedControl"] { display: none; }
-    
-    .news-row { 
-        margin-bottom: 12px; 
-        padding: 16px; 
-        border-radius: 16px;
-        background: var(--surface-color);
-        border: 1px solid var(--surface-border); 
-        font-size: 14px; 
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
-    }
-    .news-row:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-        border-color: #334155;
-    }
-
-    .stock-check { 
-        background-color: var(--surface-color); 
-        padding: 16px; 
-        border-radius: 16px; 
-        border: 1px solid var(--surface-border); 
-        text-align: center; 
-        margin: 14px 0 20px 0; 
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-    }
-    .stock-name-text { font-size: 26px; font-weight: 700; color: var(--cta-color); letter-spacing: -0.5px; }
-    
-    .mobile-hero { text-align: center; padding: 1rem 0 1.5rem 0; }
-    .mobile-hero h1 { font-size: 2.2rem; margin-bottom: 0.5rem; font-weight: 700; letter-spacing: -1px; color: var(--text-main); }
-    .mobile-hero p { color: var(--text-muted); margin-bottom: 0; font-size: 16px; }
-    
-    div[data-testid="stForm"] { 
-        background: var(--surface-color); 
-        border: 1px solid var(--surface-border); 
-        border-radius: 16px; 
-        padding: 1.25rem; 
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-    }
-    div[data-testid="stForm"] input { 
-        background: #020617; 
-        color: var(--text-main); 
-        border-radius: 16px; 
-        border: 1px solid var(--surface-border);
-        padding: 12px 16px;
-    }
-    div[data-testid="stForm"] input:focus {
-        border-color: var(--accent-blue);
-        box-shadow: 0 0 0 1px var(--accent-blue);
-    }
-
-    div[data-testid="stForm"] button { 
-        border-radius: 16px; 
-        min-height: 3rem; 
-        font-weight: 700; 
-        background-color: var(--accent-blue); 
-        border: none; 
-        color: #ffffff; 
-        transition: background-color 0.2s;
-    }
-    div[data-testid="stForm"] button:hover {
-        background-color: #2563EB; 
-    }
-    
-    .done-btn-wrapper div[data-testid="stButton"] button { 
-        background-color: #10B981 !important; 
-        border: 1px solid #059669 !important; 
-        border-radius: 16px !important; 
-    }
-    .done-btn-wrapper div[data-testid="stButton"] button p {
-        color: #ffffff !important; 
-        font-weight: 700 !important;
-    }
-    .done-btn-wrapper div[data-testid="stButton"] button:hover {
-        background-color: #059669 !important; 
-        border-color: #047857 !important; 
-    }
-    .done-btn-wrapper div[data-testid="stButton"] button p {
-        color: #ffffff !important; 
-        font-weight: 700 !important;
-    }
-    .done-btn-wrapper div[data-testid="stButton"] button:hover {
-        background-color: #059669 !important; 
-        border-color: #047857 !important; 
-    }
-
-    .error-btn-wrapper div[data-testid="stButton"] button { 
-        background-color: #EF4444 !important; 
-        border: 1px solid #B91C1C !important; 
-        border-radius: 16px !important; 
-    }
-    .error-btn-wrapper div[data-testid="stButton"] button p {
-        color: #ffffff !important; 
-        font-weight: 700 !important;
-    }
-    .error-btn-wrapper div[data-testid="stButton"] button p {
-        color: #ffffff !important; 
-        font-weight: 700 !important;
-    }
-    
-    /* Task slots 欄位間距 24px */
-    [data-testid="column"] {
-        padding-left: 0 !important;
-        padding-right: 0 !important;
-    }
-    div[data-testid="stHorizontalBlock"] {
-        gap: 24px !important; 
-    }
-
-    /* 今日股市焦點按鈕 */
-    .focus-btn-wrapper div[data-testid="stButton"] button {
-        background: linear-gradient(135deg, #F59E0B 0%, #EF4444 100%) !important;
-        border: none !important;
-        border-radius: 16px !important;
-        color: #ffffff !important;
-        font-weight: 700 !important;
-        font-size: 15px !important;
-        letter-spacing: 0.3px;
-        transition: opacity 0.2s ease !important;
-        box-shadow: 0 4px 14px rgba(245,158,11,0.35) !important;
-    }
-    .focus-btn-wrapper div[data-testid="stButton"] button:hover {
-        opacity: 0.88 !important;
-    }
-    .focus-btn-wrapper div[data-testid="stButton"] button p {
-        color: #ffffff !important;
-        font-weight: 700 !important;
-    }
-
-    /* 今日焦點卡片 */
-    .focus-card {
-        background: linear-gradient(135deg, rgba(245,158,11,0.08) 0%, rgba(239,68,68,0.05) 100%);
-        border: 1px solid rgba(245,158,11,0.25);
-        border-radius: 20px;
-        padding: 24px 28px;
-        margin: 16px 0;
-    }
-    .focus-headline-row {
-        margin-bottom: 10px;
-        padding: 12px 16px;
-        border-radius: 12px;
-        background: var(--surface-color);
-        border: 1px solid var(--surface-border);
-        font-size: 13.5px;
-        transition: transform 0.18s ease, box-shadow 0.18s ease;
-    }
-    .focus-headline-row:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-        border-color: rgba(245,158,11,0.4);
-    }
-
-    /* Expander UI Fixes */
-    [data-testid="stExpander"] {
-        background: var(--surface-color);
-        border: 1px solid var(--surface-border);
-        border-radius: 16px !important;
-        overflow: hidden;
-    }
-    
-    /* Progress bar pill fix */
-    .progress-pill {
-        padding: 12px; 
-        border-radius: 16px; 
-        text-align: center; 
-        color: white; 
-        font-weight: 600; 
-        border: 1px solid var(--surface-border); 
-        white-space: nowrap; 
-        overflow: hidden; 
-        text-overflow: ellipsis; 
-        font-size: 14px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-
-    @media (max-width: 640px) {
-        .block-container { padding-top: 1rem; padding-left: 1rem; padding-right: 1rem; }
-        .mobile-hero h1 { font-size: 1.75rem; }
-    }
-    </style>""",
-    unsafe_allow_html=True,
-)
+st.set_page_config(page_title="股市新聞爬蟲 AI 分析台", page_icon="📈", layout="wide")
+st.markdown(build_dashboard_theme_css(), unsafe_allow_html=True)
 
 if 'tasks' not in st.session_state:
     st.session_state.tasks = {}
@@ -812,6 +629,14 @@ if 'current_slot_idx' not in st.session_state:
     st.session_state.current_slot_idx = 0
 if 'current_view' not in st.session_state:
     st.session_state.current_view = None
+if 'last_inputs' not in st.session_state:
+    st.session_state.last_inputs = ["2330", "2317", "0050"]
+if 'last_invalid_inputs' not in st.session_state:
+    st.session_state.last_invalid_inputs = []
+if 'last_resolved_inputs' not in st.session_state:
+    st.session_state.last_resolved_inputs = []
+if 'stock_dict_count' not in st.session_state:
+    st.session_state.stock_dict_count = 0
 # 今日股市焦點狀態
 if 'market_focus' not in st.session_state:
     st.session_state.market_focus = {
@@ -825,249 +650,355 @@ if 'market_focus' not in st.session_state:
 search_panel = get_mobile_search_panel_config()
 active_key = resolve_active_api_key(SYSTEM_API_KEY)
 
+if 'stock_dict' not in st.session_state:
+    with st.spinner("正在同步即時股票資料庫與熱門新聞來源..."):
+        stock_dict, count = asyncio.run(sync_market_data())
+        st.session_state.stock_dict = stock_dict
+        st.session_state.stock_dict_count = count
+else:
+    st.session_state.stock_dict_count = st.session_state.get(
+        "stock_dict_count",
+        len(st.session_state.get("stock_dict", {})),
+    )
+
+default_inputs = list(st.session_state.get("last_inputs", ["2330", "2317", "0050"]))[:3]
+while len(default_inputs) < 3:
+    default_inputs.append("")
+tracked_input_count = len(normalize_stock_inputs(default_inputs))
+
 st.markdown(
-    """
-    <div class="mobile-hero">
-        <h1>🛡️ 股市全視角熱度儀</h1>
-        <p>輸入股票代號或名稱，直接從手機啟動分析。</p>
+    f"""
+    <div class="dashboard-shell">
+        <div class="dashboard-topbar">
+            <div class="hero-card">
+                <div class="hero-mark">📈</div>
+                <div class="hero-copy">
+                    <h1>{search_panel.hero_title}</h1>
+                    <p>{search_panel.hero_subtitle}</p>
+                </div>
+            </div>
+            <div class="hero-actions">
+                <div class="hero-action">🔔</div>
+                <div class="hero-action">↻</div>
+            </div>
+        </div>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-# 自動同步
-if 'stock_dict' not in st.session_state:
-    with st.spinner("🚀 正在啟動天網：同步 2026 全市場股票清單..."):
-        stock_dict, count = asyncio.run(sync_market_data())
-        st.session_state.stock_dict = stock_dict
-        st.success(f"✅ 資料庫就緒：{count} 檔股票")
-        time.sleep(1) 
+status_detail = (
+    f"{search_panel.database_banner_detail}｜目前同步 {st.session_state.stock_dict_count} 檔股票"
+)
+st.markdown(
+    build_dashboard_status_markup(search_panel.database_banner_title, status_detail),
+    unsafe_allow_html=True,
+)
 
 if not active_key:
-    st.caption("⚠️ 未偵測到系統 AI 金鑰，將使用備用關鍵字算法。")
+    st.markdown(
+        """
+        <div class='dashboard-empty'>
+            目前未偵測到 AI 金鑰，系統仍會完成新聞爬取與整理，但 AI 建議將退回備援摘要模式。
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-default_input = st.session_state.get("last_input", "2330")
 default_day_range = clamp_day_range(st.session_state.get("selected_day_range", DEFAULT_DAY_RANGE))
 with st.form("mobile_search_form"):
-    user_input = st.text_input(
-        search_panel.title,
-        value=default_input,
-        placeholder=search_panel.placeholder,
-        label_visibility="collapsed",
+    st.markdown(
+        f"""
+        <div class="panel-heading">
+            <div>
+                <h2>📊 {search_panel.title}</h2>
+                <p>支援股票代號或名稱，會自動對應台股個股與熱門 ETF。</p>
+            </div>
+            <div class="panel-count">已輸入 {tracked_input_count} / 3</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
+
+    input_cols = st.columns(3)
+    raw_inputs = []
+    for idx, col in enumerate(input_cols):
+        with col:
+            raw_inputs.append(
+                st.text_input(
+                    search_panel.input_labels[idx],
+                    value=default_inputs[idx],
+                    placeholder="2330",
+                    key=f"dashboard_symbol_{idx}",
+                )
+            )
+
     selected_day_range = st.select_slider(
         search_panel.day_range_label,
         options=[1, 2, 3, 5, 7, 10, 14],
         value=default_day_range,
-        help="可選擇最近 1 到 14 天的新聞",
+        help="抓取近 1 到 14 天的重要新聞。",
     )
+
+    hot_symbols_markup = "".join(
+        f"<span class='hot-symbol'>{label}</span>"
+        for label in search_panel.hot_symbols
+    )
+    st.markdown(f"<div class='hot-symbols'>{hot_symbols_markup}</div>", unsafe_allow_html=True)
+
     run_btn = st.form_submit_button(
-        f"🚀 {search_panel.button_label}",
+        f"🤖 {search_panel.button_label}",
         type="primary",
         use_container_width=True,
     )
 
+st.markdown(
+    f"""
+    <div class="focus-inline-card">
+        <h3>🌐 {search_panel.focus_title}</h3>
+        <p>{search_panel.focus_subtitle}</p>
+    </div>
+    <div class="analysis-button-note">最多同時保留 3 個分析任務，完成後可在下方快速切換查看。</div>
+    """,
+    unsafe_allow_html=True,
+)
+
 if run_btn:
-    normalized_input = user_input.strip()
+    requested_symbols = normalize_stock_inputs(raw_inputs)
     st.session_state.selected_day_range = clamp_day_range(selected_day_range)
-    if normalized_input:
-        code, name = asyncio.run(resolve_stock_info(normalized_input, st.session_state.stock_dict))
-        if code:
-            st.session_state.target_code = code
-            st.session_state.target_name = name
-            st.session_state.last_input = normalized_input
-        else:
-            st.session_state.target_code = None
-            st.session_state.target_name = None
-            st.session_state.last_input = normalized_input
-    else:
-        st.session_state.target_code = None
-        st.session_state.target_name = None
+    st.session_state.last_inputs = [(value or "").strip() for value in raw_inputs]
 
-if st.session_state.get('target_code'):
-    st.markdown(
-        f"<div class='stock-check'><div class='stock-name-text'>{st.session_state.target_name}</div><div>({st.session_state.target_code})</div></div>",
-        unsafe_allow_html=True,
-    )
-elif st.session_state.get("last_input"):
-    st.markdown(
-        "<div class='stock-check' style='color:#ff4757'>⚠️ 找不到目標</div>",
-        unsafe_allow_html=True,
-    )
+    if not requested_symbols:
+        st.session_state.last_resolved_inputs = []
+        st.session_state.last_invalid_inputs = []
 
-if run_btn:
-    target_code = st.session_state.get('target_code')
-    target_name = st.session_state.get('target_name')
-    selected_day_range = clamp_day_range(st.session_state.get("selected_day_range", DEFAULT_DAY_RANGE))
-    
-    if not target_code:
-        st.error("找不到目標股票，無法啟動分析。")
-    else:
-        slot_idx = st.session_state.current_slot_idx
-        task_id = f"task_{target_code}_{int(time.time())}"
-        
-        # 覆蓋指定 slot 的舊任務 (如果有的話)
-        st.session_state.tasks_slots[slot_idx] = task_id
-        
-        st.session_state.tasks[task_id] = {
-            "task_id": task_id,
-            "stock_code": target_code,
-            "stock_name": target_name,
-            "day_range": selected_day_range,
-            "progress": 0,
-            "status": "running",
-            "result": None
-        }
-        
-        # 移動指標到下一個 slot (0 -> 1 -> 2 -> 0)
-        st.session_state.current_slot_idx = (slot_idx + 1) % 3
-        st.session_state.current_view = task_id
-        
-        # 啟動背景執行緒
-        import threading
-        from streamlit.runtime.scriptrunner import add_script_run_ctx
-        import time
-        t = threading.Thread(target=background_task_runner, args=(task_id,))
-        add_script_run_ctx(t)
-        t.start()
+    resolved_inputs = []
+    invalid_inputs = []
+    seen_codes = set()
+
+    for symbol in requested_symbols:
+        code, name = asyncio.run(resolve_stock_info(symbol, st.session_state.stock_dict))
+        if not code:
+            invalid_inputs.append(symbol)
+            continue
+        if code in seen_codes:
+            continue
+        seen_codes.add(code)
+        resolved_inputs.append({"query": symbol, "code": code, "name": name})
+
+    st.session_state.last_resolved_inputs = resolved_inputs
+    st.session_state.last_invalid_inputs = invalid_inputs
+
+    if resolved_inputs:
+        created_task_ids = []
+        for item in resolved_inputs:
+            created_task_ids.append(
+                queue_analysis_task(
+                    item["code"],
+                    item["name"],
+                    st.session_state.selected_day_range,
+                )
+            )
+        st.session_state.current_view = created_task_ids[-1]
+
+if st.session_state.last_resolved_inputs:
+    resolved_label = "、".join(
+        f"{item['name']} ({item['code']})"
+        for item in st.session_state.last_resolved_inputs
+    )
+    st.success(f"已加入分析佇列：{resolved_label}")
+if st.session_state.last_invalid_inputs:
+    st.warning(f"找不到以下輸入：{'、'.join(st.session_state.last_invalid_inputs)}")
 
 # 繪製 Task Slots 按鈕列
-st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
+st.markdown(
+    """
+    <div class="dashboard-section-header">
+        <h2>追蹤任務</h2>
+        <span>最近三筆任務會保留在這裡，可點擊切換目前查看的分析結果。</span>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
 cols = st.columns(3)
 for i in range(3):
     t_id = st.session_state.tasks_slots[i]
     with cols[i]:
-        if t_id and t_id in st.session_state.tasks:
-            task = st.session_state.tasks[t_id]
-            if task['status'] == 'running':
-                pct = task['progress']
-                code = task['stock_code']
-                name = task['stock_name']
-                # 進度條按鈕樣式
-                st.markdown(f"""
-                <div class="progress-pill" style="background: linear-gradient(to right, var(--accent-blue) {pct}%, var(--surface-color) {pct}%);">
-                    {code}{name} {pct}%
-                </div>
-                """, unsafe_allow_html=True)
-            elif task['status'] == 'done':
-                st.markdown('<div class="done-btn-wrapper">', unsafe_allow_html=True)
-                if st.button(f"✅ {task['stock_name']}分析完成", key=f"btn_{t_id}", use_container_width=True):
-                    st.session_state.current_view = t_id
-                st.markdown('</div>', unsafe_allow_html=True)
-            elif task['status'] == 'error':
-                st.markdown('<div class="error-btn-wrapper">', unsafe_allow_html=True)
-                if st.button(f"❌ {task['stock_name']}失敗", key=f"btn_{t_id}", use_container_width=True):
-                    st.session_state.current_view = t_id
-                st.markdown('</div>', unsafe_allow_html=True)
+        if not t_id or t_id not in st.session_state.tasks:
+            st.markdown(
+                f"<div class='task-pill'>槽位 {i + 1}<br><small>等待輸入</small></div>",
+                unsafe_allow_html=True,
+            )
+            continue
+
+        task = st.session_state.tasks[t_id]
+        if task['status'] == 'running':
+            st.markdown(
+                (
+                    "<div class='task-pill running'>"
+                    f"{task['stock_code']} {task['stock_name']}<br>"
+                    f"<small>分析中 {task['progress']}%</small>"
+                    "</div>"
+                ),
+                unsafe_allow_html=True,
+            )
+        elif task['status'] == 'done':
+            st.markdown('<div class="task-done-wrapper">', unsafe_allow_html=True)
+            if st.button(
+                f"✅ {task['stock_code']} {task['stock_name']}",
+                key=f"btn_{t_id}",
+                use_container_width=True,
+            ):
+                st.session_state.current_view = t_id
+            st.markdown('</div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="task-error-wrapper">', unsafe_allow_html=True)
+            if st.button(
+                f"❌ {task['stock_code']} {task['stock_name']}",
+                key=f"btn_{t_id}",
+                use_container_width=True,
+            ):
+                st.session_state.current_view = t_id
+            st.markdown('</div>', unsafe_allow_html=True)
 
 
 # 顯示目前選取的報告
+tracked_codes = []
+for slot_id in st.session_state.tasks_slots:
+    if slot_id and slot_id in st.session_state.tasks:
+        code = st.session_state.tasks[slot_id]['stock_code']
+        if code not in tracked_codes:
+            tracked_codes.append(code)
+if not tracked_codes:
+    tracked_codes = normalize_stock_inputs(default_inputs)
+
 if st.session_state.current_view and st.session_state.current_view in st.session_state.tasks:
     task = st.session_state.tasks[st.session_state.current_view]
-    
-    st.markdown(f"### 🔍 {task['stock_name']} ({task['stock_code']}) 分析報告")
-    
+
     if task['status'] == 'running':
-        st.info(f"🚀 正在為您篩選與分析中... 目前進度 {task['progress']}%")
+        st.markdown(
+            """
+            <div class="dashboard-section-header">
+                <h2>最新分析結果</h2>
+                <span>分析進行中</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            (
+                "<div class='dashboard-empty'>"
+                f"{task['stock_name']} ({task['stock_code']}) 正在分析中，"
+                f"目前進度 {task['progress']}%。"
+                "</div>"
+            ),
+            unsafe_allow_html=True,
+        )
     elif task['status'] == 'error':
-        st.error(f"分析發生錯誤: {task['error']}")
+        st.markdown(
+            """
+            <div class="dashboard-section-header">
+                <h2>最新分析結果</h2>
+                <span>任務失敗</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f"<div class='dashboard-empty'>分析失敗：{task['error']}</div>",
+            unsafe_allow_html=True,
+        )
     elif task['status'] == 'done':
         res = task['result']
         all_news = res['all_news']
         source_sections = res['source_sections']
         ai_report = res['ai_report']
         selected_day_range = res['selected_day_range']
-        
-        # ─── AI 分析報告（全版，最優先）───
-        st.subheader("🤖 AI 投資分析報告")
-        if not all_news:
-            # 沒有新聞時，引導用戶延長搜尋天數
-            st.markdown(f"""
-            <div style='
-                background: rgba(59, 130, 246, 0.08);
-                border: 1px solid rgba(59, 130, 246, 0.25);
-                border-radius: 16px;
-                padding: 20px 24px;
-                text-align: center;
-            '>
-                <div style='font-size: 32px; margin-bottom: 12px;'>🔍</div>
-                <div style='font-size: 16px; font-weight: 600; color: #F8FAFC; margin-bottom: 8px;'>
-                    近 {selected_day_range} 天內沒有找到相關新聞
-                </div>
-                <div style='font-size: 14px; color: #94A3B8; line-height: 1.6;'>
-                    這支股票可能是較冷門的小型股。<br>
-                    請回到上方，將「抓取天數」拉長至 <b style='color: #3B82F6;'>7 天或 14 天</b>，再重新分析。
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-        elif active_key and ai_report and "### 系統未配置" not in ai_report and "### AI 無法" not in ai_report:
-            import re
-            from ui_helpers import build_report_markup
-            clean_report = ai_report.replace("SCORE:", "").strip()
-            clean_report = re.sub(r"SCORE: \d+\n?", "", clean_report)
-            st.markdown(build_report_markup(clean_report), unsafe_allow_html=True)
-        else:
-            st.info(ai_report)
-        
-        st.divider()
-        
-        # ─── 新聞來源分布 + 精選頭條（下方兩欄）───
-        col1, col2 = st.columns([1, 2])
-        
-        with col1:
-            st.subheader("📰 新聞來源分布")
-            for section in source_sections:
-                with st.expander(f"{section['source']}: {section['count']} 則"):
-                    for link_item in section["links"]:
-                        st.markdown(
-                            f"- [{link_item['title']}]({link_item['link']})"
-                        )
-        
-        with col2:
-            st.subheader(f"🗞️ 精選頭條 (近 {selected_day_range} 日)")
-            if all_news:
-                for n in all_news:
-                    snippet = n.get('snippet')
-                    if snippet is None: snippet = "無摘要"
-                    
-                    link = n.get('link')
-                    if not link:
-                        link = f"https://www.google.com/search?q={n['title']}"
 
-                    if len(snippet) > 50: snippet = snippet[:50] + "..."
-                    
-                    st.markdown(f"""
-                    <div class='news-row'>
-                        <b>[{n['source']}]</b> <a href='{link}' target='_blank' style='text-decoration:none; font-weight:600; color: #3B82F6;'>{n['title']}</a><br>
-                        <small style='color:#94A3B8'>{snippet}</small>
+        st.markdown(
+            build_dashboard_result_markup(
+                stock_name=task['stock_name'],
+                stock_code=task['stock_code'],
+                report_text=ai_report,
+                news_items=all_news,
+                tracked_codes=tracked_codes,
+                updated_at=res.get('completed_at'),
+            ),
+            unsafe_allow_html=True,
+        )
+
+        clean_report = re.sub(r"SCORE: \d+\n?", "", ai_report.replace("SCORE:", "").strip())
+        with st.expander("完整 AI 報告", expanded=False):
+            if active_key and clean_report and "### 系統未配置" not in clean_report and "### AI 無法" not in clean_report:
+                st.markdown(build_report_markup(clean_report), unsafe_allow_html=True)
+            else:
+                st.info(ai_report)
+
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            st.subheader("📰 新聞來源")
+            for section in source_sections:
+                with st.expander(f"{section['source']} · {section['count']} 則"):
+                    for link_item in section["links"]:
+                        st.markdown(f"- [{link_item['title']}]({link_item['link']})")
+
+        with col2:
+            st.subheader(f"🗞️ 精選新聞（近 {selected_day_range} 日）")
+            if all_news:
+                for news_item in all_news:
+                    snippet = (news_item.get('snippet') or '').strip()
+                    if len(snippet) > 72:
+                        snippet = snippet[:72] + "..."
+                    link = news_item.get('link') or f"https://www.google.com/search?q={news_item['title']}"
+                    st.markdown(
+                        f"""
+                        <div class='news-row'>
+                            <b>[{news_item['source']}]</b>
+                            <a href='{link}' target='_blank' style='text-decoration:none; font-weight:700; color:#8ec2ff;'>{news_item['title']}</a><br>
+                            <small style='color:#a8b7da'>{snippet or '無摘要'}</small>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+            else:
+                st.markdown(
+                    """
+                    <div class='dashboard-empty'>
+                        目前新聞量不足，建議把上方新聞時間窗拉長到 7 天或 14 天後重新分析。
                     </div>
-                    """, unsafe_allow_html=True)
-            else: 
-                st.info(f"無新聞資料 (最近 {selected_day_range} 天無重要新聞)")
+                    """,
+                    unsafe_allow_html=True,
+                )
+else:
+    st.markdown(
+        """
+        <div class="dashboard-section-header">
+            <h2>最新分析結果</h2>
+            <span>等待任務</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        """
+        <div class='dashboard-empty'>
+            輸入 1 到 3 檔股票後開始分析，這裡會顯示新聞摘要、AI 綜合建議、風險與情緒指標。
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 # ===========================
 # 今日股市焦點 區塊
 # ===========================
-st.markdown("---")
-st.markdown(
-    """
-    <div style='text-align:center; padding: 8px 0 4px 0;'>
-        <span style='color:#94A3B8; font-size:13px;'>⬇️ 不分個股，掃描整體台股市場</span>
-    </div>
-    """,
-    unsafe_allow_html=True,
+st.markdown('<div class="focus-button-wrapper">', unsafe_allow_html=True)
+focus_btn = st.button(
+    f"📡 {search_panel.focus_title}",
+    key="market_focus_btn",
+    use_container_width=True,
 )
-
-# 今日股市焦點按鈕
-col_focus_l, col_focus_c, col_focus_r = st.columns([1, 3, 1])
-with col_focus_c:
-    st.markdown('<div class="focus-btn-wrapper">', unsafe_allow_html=True)
-    focus_btn = st.button(
-        "📡 今日股市焦點　掃描 & AI 總結",
-        key="market_focus_btn",
-        use_container_width=True,
-    )
-    st.markdown('</div>', unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
 
 if focus_btn:
     # 每日只抓一次，若已有當日資料則直接顯示
@@ -1119,10 +1050,9 @@ if mf['status'] == 'done':
     today_str = time.strftime('%Y年%m月%d日')
     st.markdown(
         f"""
-        <div class='focus-card'>
-            <div style='font-size:18px; font-weight:700; color:#F59E0B; margin-bottom:6px;'>
-                📡 今日股市焦點 &nbsp;<span style='font-size:13px; color:#94A3B8; font-weight:400;'>({today_str} · {len(mf['headlines'])} 則頭條)</span>
-            </div>
+        <div class="dashboard-section-header">
+            <h2>🌐 {search_panel.focus_title}</h2>
+            <span>{today_str} · {len(mf['headlines'])} 則頭條</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -1130,30 +1060,49 @@ if mf['status'] == 'done':
 
     # AI 總結
     if mf['summary']:
-        st.subheader("🤖 AI 市場總結")
-        st.markdown(mf['summary'])
-        st.divider()
+        focus_summary_html = mf['summary'].replace("\n", "<br>")
+        st.markdown(
+            f"""
+            <section class='dashboard-card'>
+                <h3>大盤 AI 總結</h3>
+                <p>{focus_summary_html}</p>
+            </section>
+            """,
+            unsafe_allow_html=True,
+        )
 
     # 頭條新聞列表
     if mf['headlines']:
-        st.subheader(f"📰 今日頭條 ({len(mf['headlines'])} 則)")
+        st.subheader(f"📰 今日市場新聞 ({len(mf['headlines'])} 則)")
         for h in mf['headlines']:
-            snippet = (h.get('snippet') or '')[:60]
-            if len(h.get('snippet') or '') > 60:
+            snippet = (h.get('snippet') or '')[:72]
+            if len(h.get('snippet') or '') > 72:
                 snippet += '...'
             link = h.get('link') or f"https://www.google.com/search?q={h['title']}"
             st.markdown(
                 f"""
-                <div class='focus-headline-row'>
-                    <b style='color:#F59E0B;'>[{h['source']}]</b>
-                    <a href='{link}' target='_blank' style='text-decoration:none; font-weight:600; color:#F8FAFC;'>{h['title']}</a><br>
-                    <small style='color:#94A3B8;'>{snippet}</small>
+                <div class='news-row'>
+                    <b>[{h['source']}]</b>
+                    <a href='{link}' target='_blank' style='text-decoration:none; font-weight:700; color:#8ec2ff;'>{h['title']}</a><br>
+                    <small style='color:#a8b7da;'>{snippet}</small>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
 elif mf['status'] == 'error':
     st.error(f"❌ 抓取今日焦點失敗：{mf['error']}")
+
+st.markdown(
+    """
+    <div class="bottom-nav">
+        <div class="bottom-nav-item active"><strong>📊</strong>個股分析</div>
+        <div class="bottom-nav-item"><strong>🌐</strong>今日焦點</div>
+        <div class="bottom-nav-item"><strong>⭐</strong>追蹤清單</div>
+        <div class="bottom-nav-item"><strong>⚙️</strong>設定</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 # 定期更新檢查
 if any(t['status'] == 'running' for t in st.session_state.tasks.values()):
