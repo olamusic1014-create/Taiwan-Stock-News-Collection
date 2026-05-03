@@ -349,6 +349,34 @@ div[data-testid="stTextInput"] > div {
     width: 100%;
 }
 
+div[data-testid="stTextInput"] [data-baseweb="base-input"] {
+    border: none !important;
+    outline: none !important;
+    border-radius: 15px !important;
+    background-color: rgba(22, 37, 69, 0.96) !important;
+    box-shadow: inset 2px 5px 10px rgba(0,0,0,0.3);
+    transition: 300ms ease-in-out;
+    overflow: hidden;
+}
+
+div[data-testid="stTextInput"] [data-baseweb="base-input"] > div {
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    border-radius: 15px !important;
+    overflow: hidden;
+    padding: 0 !important;
+    display: flex;
+    align-items: center;
+}
+
+div[data-testid="stTextInput"] [data-baseweb="base-input"]:focus-within {
+    background-color: rgba(245, 248, 255, 0.98) !important;
+    transform: scale(1.05);
+    box-shadow: 13px 13px 100px rgba(26, 48, 92, 0.38),
+                -13px -13px 100px rgba(255, 255, 255, 0.12);
+}
+
 div[data-testid="stTextInput"] label p,
 div[data-testid="stSelectSlider"] label p {
     color: var(--text-secondary) !important;
@@ -360,25 +388,24 @@ div[data-testid="stSelectSlider"] label p {
 div[data-testid="stTextInput"] input {
     width: 100% !important;
     box-sizing: border-box;
-    min-height: 56px;
+    height: 60px !important;
+    min-height: 60px;
+    line-height: 60px !important;
     border-radius: 15px;
-    padding: 1em;
-    background-color: rgba(22, 37, 69, 0.96);
-    border: none;
-    outline: none;
-    box-shadow: inset 2px 5px 10px rgba(0,0,0,0.3);
-    transition: 300ms ease-in-out;
+    padding: 0 1em !important;
+    background-color: transparent !important;
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+    margin: 0 !important;
     color: var(--text-primary);
     font-size: 1.05rem;
     font-weight: 600;
+    display: block;
 }
 
 div[data-testid="stTextInput"] input:focus {
-    background-color: rgba(245, 248, 255, 0.98);
     color: #081226;
-    transform: scale(1.05);
-    box-shadow: 13px 13px 100px rgba(26, 48, 92, 0.38),
-                -13px -13px 100px rgba(255, 255, 255, 0.12);
 }
 
 div[data-testid="stSelectSlider"] [data-baseweb="slider"] {
