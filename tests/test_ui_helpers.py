@@ -92,9 +92,13 @@ class UiHelpersTests(unittest.TestCase):
         self.assertIn("overflow: hidden;", css)
         self.assertIn("min-height: 76px !important;", css)
         self.assertIn("font-size: 2.1rem !important;", css)
-        self.assertIn("line-height: 1.1 !important;", css)
-        self.assertIn("transform: translateY(-2px);", css)
+        self.assertIn("height: 76px !important;", css)
+        self.assertIn("line-height: 1 !important;", css)
+        self.assertIn("padding: 0 1em 8px !important;", css)
+        self.assertIn("transform: translateY(-4px);", css)
         self.assertNotIn("line-height: 60px !important;", css)
+        self.assertNotIn("height: auto !important;", css)
+        self.assertNotIn("min-height: 0 !important;", css)
 
     def test_build_dashboard_status_markup_keeps_only_copy_without_chart_stub(self):
         markup = build_dashboard_status_markup("資料庫已就緒", "支援即時新聞爬取")

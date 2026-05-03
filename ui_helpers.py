@@ -393,11 +393,11 @@ div[data-testid="stSelectSlider"] label p {
 div[data-testid="stTextInput"] input {
     width: 100% !important;
     box-sizing: border-box;
-    height: auto !important;
-    min-height: 0 !important;
-    line-height: 1.1 !important;
+    height: 76px !important;
+    min-height: 76px !important;
+    line-height: 1 !important;
     border-radius: 15px;
-    padding: 0 1em !important;
+    padding: 0 1em 8px !important;
     background-color: transparent !important;
     border: none !important;
     outline: none !important;
@@ -407,7 +407,7 @@ div[data-testid="stTextInput"] input {
     font-size: 2.1rem !important;
     font-weight: 700;
     display: block;
-    transform: translateY(-2px);
+    transform: translateY(-4px);
     align-self: center;
 }
 
