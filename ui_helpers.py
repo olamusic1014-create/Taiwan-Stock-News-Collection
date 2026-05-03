@@ -357,7 +357,7 @@ div[data-testid="stTextInput"] [data-baseweb="base-input"] {
     box-shadow: inset 2px 5px 10px rgba(0,0,0,0.3);
     transition: 300ms ease-in-out;
     overflow: hidden;
-    min-height: 76px !important;
+    min-height: 80px !important;
     display: flex;
     align-items: center;
 }
@@ -369,7 +369,7 @@ div[data-testid="stTextInput"] [data-baseweb="base-input"] > div {
     border-radius: 15px !important;
     overflow: hidden;
     padding: 0 !important;
-    min-height: 76px !important;
+    min-height: 80px !important;
     width: 100%;
     box-sizing: border-box;
     display: flex;
@@ -378,7 +378,6 @@ div[data-testid="stTextInput"] [data-baseweb="base-input"] > div {
 
 div[data-testid="stTextInput"] [data-baseweb="base-input"]:focus-within {
     background-color: rgba(245, 248, 255, 0.98) !important;
-    transform: scale(1.05);
     box-shadow: 13px 13px 100px rgba(26, 48, 92, 0.38),
                 -13px -13px 100px rgba(255, 255, 255, 0.12);
 }
@@ -394,9 +393,9 @@ div[data-testid="stSelectSlider"] label p {
 div[data-testid="stTextInput"] input {
     width: 100% !important;
     box-sizing: border-box;
-    height: 76px !important;
-    min-height: 76px !important;
-    line-height: 76px !important;
+    height: 80px !important;
+    min-height: 80px !important;
+    line-height: 80px !important;
     border-radius: 15px;
     padding: 0 1em !important;
     background-color: transparent !important;
@@ -408,6 +407,7 @@ div[data-testid="stTextInput"] input {
     font-size: 1.89rem !important;
     font-weight: 700;
     text-align: center !important;
+    transform: translateY(-6px);
     -webkit-appearance: none;
     appearance: none;
     display: block;
