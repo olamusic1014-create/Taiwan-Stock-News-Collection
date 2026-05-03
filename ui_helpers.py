@@ -424,6 +424,9 @@ div[data-testid="stTextInput"] input {
     color: transparent !important;
     font-size: 1.89rem !important;
     font-weight: 700;
+    font-family: "Noto Sans TC", "Plus Jakarta Sans", sans-serif !important;
+    text-transform: none !important;
+    letter-spacing: 0 !important;
     text-align: center !important;
     -webkit-text-fill-color: transparent !important;
     caret-color: var(--text-primary);
@@ -484,8 +487,12 @@ div[data-testid="stTextInput"] input::selection {
     color: var(--text-primary);
     font-size: 1.89rem !important;
     font-weight: 700;
+    font-family: "Noto Sans TC", "Plus Jakarta Sans", sans-serif !important;
+    text-transform: none !important;
+    letter-spacing: 0 !important;
     line-height: 1;
     text-align: center !important;
+    white-space: nowrap;
     transform: translateY(-6px);
 }
 
@@ -516,6 +523,58 @@ div[data-testid="stForm"] button:hover {
     background: linear-gradient(90deg, #5bc6ff 0%, #3d72ff 100%);
 }
 
+div[data-testid="stButton"] > button {
+    min-height: 54px;
+    border-radius: 18px;
+    border: 1px solid rgba(84, 132, 235, 0.28);
+    background: linear-gradient(180deg, rgba(11, 24, 48, 0.95), rgba(7, 16, 30, 0.96));
+    color: var(--text-primary) !important;
+    font-weight: 800;
+    box-shadow: var(--shadow-soft);
+}
+
+div[data-testid="stButton"] > button * {
+    color: inherit !important;
+    fill: currentColor !important;
+    stroke: currentColor !important;
+}
+
+div[data-testid="stButton"] > button:hover {
+    border-color: rgba(74, 213, 255, 0.42);
+}
+
+div[data-testid="stButton"] > button[kind="secondary"] {
+    min-height: 54px;
+    border-radius: 18px;
+    border: 1px solid rgba(84, 132, 235, 0.28);
+    background: linear-gradient(180deg, rgba(11, 24, 48, 0.95), rgba(7, 16, 30, 0.96));
+    color: var(--text-primary) !important;
+    font-weight: 800;
+    box-shadow: var(--shadow-soft);
+}
+
+div[data-testid="stButton"] > button[kind="secondary"] * {
+    color: inherit !important;
+}
+
+div[data-testid="stButton"] > button[kind="secondary"]:hover {
+    border-color: rgba(74, 213, 255, 0.42);
+}
+
+div[data-testid="stElementContainer"]:has(.focus-button-wrapper) + div[data-testid="stElementContainer"] div[data-testid="stButton"] > button {
+    min-height: 54px;
+    border-radius: 18px;
+    border: 1px solid rgba(84, 132, 235, 0.28);
+    background: linear-gradient(180deg, rgba(11, 24, 48, 0.95), rgba(7, 16, 30, 0.96));
+    color: var(--text-primary);
+    font-weight: 800;
+    box-shadow: var(--shadow-soft);
+}
+
+div[data-testid="stElementContainer"]:has(.focus-button-wrapper) + div[data-testid="stElementContainer"] div[data-testid="stButton"] > button:hover {
+    border-color: rgba(74, 213, 255, 0.42);
+}
+
 .focus-button-wrapper div[data-testid="stButton"] button {
     min-height: 54px;
     border-radius: 18px;
@@ -543,7 +602,25 @@ div[data-testid="stForm"] button:hover {
     border: 1px solid rgba(122, 237, 168, 0.24);
 }
 
+div[data-testid="stElementContainer"]:has(.task-done-wrapper) + div[data-testid="stElementContainer"] div[data-testid="stButton"] > button {
+    min-height: 56px;
+    border-radius: 16px;
+    font-weight: 700;
+    color: white;
+    background: linear-gradient(135deg, rgba(41, 148, 89, 0.95), rgba(14, 113, 79, 0.95));
+    border: 1px solid rgba(122, 237, 168, 0.24);
+}
+
 .task-error-wrapper div[data-testid="stButton"] button {
+    background: linear-gradient(135deg, rgba(148, 49, 72, 0.96), rgba(109, 23, 48, 0.96));
+    border: 1px solid rgba(255, 135, 152, 0.22);
+}
+
+div[data-testid="stElementContainer"]:has(.task-error-wrapper) + div[data-testid="stElementContainer"] div[data-testid="stButton"] > button {
+    min-height: 56px;
+    border-radius: 16px;
+    font-weight: 700;
+    color: white;
     background: linear-gradient(135deg, rgba(148, 49, 72, 0.96), rgba(109, 23, 48, 0.96));
     border: 1px solid rgba(255, 135, 152, 0.22);
 }

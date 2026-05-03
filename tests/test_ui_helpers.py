@@ -122,6 +122,17 @@ class UiHelpersTests(unittest.TestCase):
         self.assertIn('div[data-testid="stTextInput"] input:-webkit-autofill:focus {', css)
         self.assertIn("caret-color: #787878;", css)
 
+    def test_build_dashboard_theme_css_sets_explicit_cjk_font_for_stock_inputs(self):
+        css = build_dashboard_theme_css()
+
+        self.assertIn('font-family: "Noto Sans TC", "Plus Jakarta Sans", sans-serif !important;', css)
+
+    def test_build_dashboard_theme_css_preserves_cjk_input_characters_without_transform(self):
+        css = build_dashboard_theme_css()
+
+        self.assertIn("text-transform: none !important;", css)
+        self.assertIn("letter-spacing: 0 !important;", css)
+
     def test_build_dashboard_theme_css_keeps_native_placeholder_hidden_while_editing(self):
         css = build_dashboard_theme_css()
 
@@ -140,6 +151,16 @@ class UiHelpersTests(unittest.TestCase):
         self.assertIn("-webkit-box-reflect: below 1px", css)
         self.assertIn("@keyframes gradientAnimation", css)
         self.assertIn("width: var(--loading-progress, 0%);", css)
+
+    def test_build_dashboard_theme_css_styles_streamlit_secondary_buttons_and_sibling_wrapped_buttons(self):
+        css = build_dashboard_theme_css()
+
+        self.assertIn('div[data-testid="stButton"] > button {', css)
+        self.assertIn('div[data-testid="stButton"] > button * {', css)
+        self.assertIn('div[data-testid="stButton"] > button[kind="secondary"] {', css)
+        self.assertIn('div[data-testid="stElementContainer"]:has(.focus-button-wrapper) + div[data-testid="stElementContainer"] div[data-testid="stButton"] > button {', css)
+        self.assertIn('div[data-testid="stElementContainer"]:has(.task-done-wrapper) + div[data-testid="stElementContainer"] div[data-testid="stButton"] > button {', css)
+        self.assertIn('div[data-testid="stElementContainer"]:has(.task-error-wrapper) + div[data-testid="stElementContainer"] div[data-testid="stButton"] > button {', css)
 
     def test_build_dashboard_input_overlay_markup_renders_escaped_value(self):
         markup = build_dashboard_input_overlay_markup("<2330>", "2330")
