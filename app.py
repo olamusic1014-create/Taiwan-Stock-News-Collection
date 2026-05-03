@@ -677,10 +677,6 @@ st.markdown(
                     <p>{search_panel.hero_subtitle}</p>
                 </div>
             </div>
-            <div class="hero-actions">
-                <div class="hero-action">🔔</div>
-                <div class="hero-action">↻</div>
-            </div>
         </div>
     </div>
     """,
@@ -710,10 +706,8 @@ with st.form("mobile_search_form"):
     st.markdown(
         f"""
         <div class="panel-heading">
-            <div>
-                <h2>📊 {search_panel.title}</h2>
-                <p>支援股票代號或名稱，會自動對應台股個股與熱門 ETF。</p>
-            </div>
+            <h2>📊 {search_panel.title}</h2>
+            <p>支援股票代號或名稱，會自動對應台股個股與熱門 ETF。</p>
             <div class="panel-count">已輸入 {tracked_input_count} / 3</div>
         </div>
         """,
@@ -1091,18 +1085,6 @@ if mf['status'] == 'done':
             )
 elif mf['status'] == 'error':
     st.error(f"❌ 抓取今日焦點失敗：{mf['error']}")
-
-st.markdown(
-    """
-    <div class="bottom-nav">
-        <div class="bottom-nav-item active"><strong>📊</strong>個股分析</div>
-        <div class="bottom-nav-item"><strong>🌐</strong>今日焦點</div>
-        <div class="bottom-nav-item"><strong>⭐</strong>追蹤清單</div>
-        <div class="bottom-nav-item"><strong>⚙️</strong>設定</div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
 
 # 定期更新檢查
 if any(t['status'] == 'running' for t in st.session_state.tasks.values()):

@@ -2,6 +2,7 @@ import unittest
 
 from ui_helpers import (
     build_dashboard_result_markup,
+    build_dashboard_status_markup,
     build_dashboard_theme_css,
     build_report_markup,
     build_source_sections,
@@ -56,6 +57,29 @@ class UiHelpersTests(unittest.TestCase):
         self.assertIn(".status-banner", css)
         self.assertIn(".symbol-slot", css)
         self.assertIn(".dashboard-card", css)
+
+    def test_build_dashboard_theme_css_centers_input_panel_and_keeps_inputs_full_width(self):
+        css = build_dashboard_theme_css()
+
+        self.assertIn("margin: 0 auto 18px;", css)
+        self.assertIn("max-width: 720px;", css)
+        self.assertIn('div[data-testid="stTextInput"] {\n    width: 100%;', css)
+        self.assertIn("justify-content: center;", css)
+        self.assertIn("text-align: center;", css)
+
+    def test_build_dashboard_theme_css_drops_non_functional_decorative_classes(self):
+        css = build_dashboard_theme_css()
+
+        self.assertNotIn(".hero-actions", css)
+        self.assertNotIn(".hero-action", css)
+        self.assertNotIn(".status-banner-chart", css)
+        self.assertNotIn(".bottom-nav", css)
+
+    def test_build_dashboard_status_markup_keeps_only_copy_without_chart_stub(self):
+        markup = build_dashboard_status_markup("資料庫已就緒", "支援即時新聞爬取")
+
+        self.assertIn("status-banner-copy", markup)
+        self.assertNotIn("status-banner-chart", markup)
 
     def test_build_dashboard_result_markup_renders_cards_and_metrics(self):
         markup = build_dashboard_result_markup(

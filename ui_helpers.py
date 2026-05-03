@@ -123,7 +123,7 @@ def build_dashboard_theme_css() -> str:
 .block-container {
     max-width: 760px;
     padding-top: 1.5rem;
-    padding-bottom: 6.5rem;
+    padding-bottom: 3rem;
 }
 
 .dashboard-shell {
@@ -133,7 +133,7 @@ def build_dashboard_theme_css() -> str:
 .dashboard-topbar {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: center;
     gap: 16px;
     margin-bottom: 22px;
 }
@@ -141,6 +141,7 @@ def build_dashboard_theme_css() -> str:
 .hero-card {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 16px;
     padding: 0;
 }
@@ -170,24 +171,7 @@ def build_dashboard_theme_css() -> str:
     margin: 0;
     color: var(--text-secondary);
     font-size: 0.95rem;
-}
-
-.hero-actions {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    color: var(--text-secondary);
-    font-size: 1.2rem;
-}
-
-.hero-action {
-    width: 38px;
-    height: 38px;
-    display: grid;
-    place-items: center;
-    border-radius: 999px;
-    background: rgba(11, 23, 48, 0.8);
-    border: 1px solid rgba(84, 132, 235, 0.18);
+    text-align: center;
 }
 
 .status-banner,
@@ -204,7 +188,7 @@ def build_dashboard_theme_css() -> str:
 .status-banner {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
     gap: 16px;
     border-radius: 18px;
     padding: 18px 20px;
@@ -242,26 +226,6 @@ def build_dashboard_theme_css() -> str:
     font-size: 0.88rem;
 }
 
-.status-banner-chart {
-    min-width: 108px;
-    height: 48px;
-    border-radius: 14px;
-    background:
-        radial-gradient(circle at 80% 30%, rgba(101, 217, 139, 0.35), transparent 28%),
-        linear-gradient(135deg, rgba(37, 69, 132, 0.3) 0%, rgba(13, 43, 60, 0.55) 100%);
-    position: relative;
-}
-
-.status-banner-chart::after {
-    content: "";
-    position: absolute;
-    inset: 10px 12px;
-    border-bottom: 2px solid rgba(101, 217, 139, 0.45);
-    border-right: 2px solid rgba(101, 217, 139, 0.45);
-    border-radius: 14px;
-    transform: skewX(-20deg);
-}
-
 .dashboard-panel {
     border-radius: 24px;
     padding: 20px;
@@ -270,10 +234,12 @@ def build_dashboard_theme_css() -> str:
 
 .panel-heading {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: space-between;
+    justify-content: center;
     gap: 16px;
     margin-bottom: 14px;
+    text-align: center;
 }
 
 .panel-heading h2 {
@@ -289,9 +255,11 @@ def build_dashboard_theme_css() -> str:
 }
 
 .panel-count {
+    display: block;
     color: var(--accent-blue);
     font-size: 0.9rem;
     font-weight: 700;
+    text-align: center;
 }
 
 .slot-grid {
@@ -357,9 +325,26 @@ div[data-testid="stForm"] {
     background: linear-gradient(180deg, rgba(10, 20, 42, 0.95), rgba(8, 17, 34, 0.96));
     border: 1px solid var(--border-primary);
     border-radius: 24px;
+    max-width: 720px;
     padding: 20px;
     box-shadow: var(--shadow-soft);
-    margin-bottom: 18px;
+    margin: 0 auto 18px;
+}
+
+div[data-testid="stForm"] div[data-testid="stHorizontalBlock"] {
+    align-items: stretch;
+}
+
+[data-testid="column"] {
+    min-width: 0;
+}
+
+div[data-testid="stTextInput"] {
+    width: 100%;
+}
+
+div[data-testid="stTextInput"] > div {
+    width: 100%;
 }
 
 div[data-testid="stTextInput"] label p,
@@ -370,6 +355,8 @@ div[data-testid="stSelectSlider"] label p {
 }
 
 div[data-testid="stTextInput"] input {
+    width: 100% !important;
+    box-sizing: border-box;
     min-height: 56px;
     border-radius: 18px;
     background: rgba(15, 29, 58, 0.95);
@@ -656,43 +643,12 @@ div[data-testid="stForm"] button:hover {
     margin-top: 0;
 }
 
-.bottom-nav {
-    position: fixed;
-    left: 50%;
-    bottom: 0;
-    width: min(760px, calc(100vw - 24px));
-    transform: translateX(-50%);
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 0;
-    padding: 10px 12px 14px;
-    border-top: 1px solid rgba(84, 132, 235, 0.2);
-    background: rgba(3, 10, 24, 0.92);
-    backdrop-filter: blur(20px);
-}
-
-.bottom-nav-item {
-    text-align: center;
-    color: var(--text-secondary);
-    font-size: 0.8rem;
-}
-
-.bottom-nav-item strong {
-    display: block;
-    margin-bottom: 6px;
-    font-size: 1.1rem;
-}
-
-.bottom-nav-item.active {
-    color: #70afff;
-}
-
 @media (max-width: 760px) {
     .dashboard-topbar,
     .panel-heading,
     .dashboard-section-header {
         flex-direction: column;
-        align-items: flex-start;
+        align-items: center;
     }
 
     .slot-grid,
@@ -714,10 +670,6 @@ div[data-testid="stForm"] button:hover {
     .hero-copy h1 {
         font-size: 1.72rem;
     }
-
-    .bottom-nav {
-        width: calc(100vw - 12px);
-    }
 }
 </style>
 """.strip()
@@ -733,7 +685,6 @@ def build_dashboard_status_markup(title: str, detail: str) -> str:
         f"      <p class='status-banner-detail'>{escape(detail)}</p>"
         "    </div>"
         "  </div>"
-        "  <div class='status-banner-chart' aria-hidden='true'></div>"
         "</div>"
     )
 
