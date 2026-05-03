@@ -368,7 +368,7 @@ div[data-testid="stTextInput"] [data-baseweb="base-input"] > div {
     background: transparent !important;
     border-radius: 15px !important;
     overflow: hidden;
-    padding: 0 1em !important;
+    padding: 0 !important;
     min-height: 76px !important;
     width: 100%;
     box-sizing: border-box;
@@ -394,11 +394,11 @@ div[data-testid="stSelectSlider"] label p {
 div[data-testid="stTextInput"] input {
     width: 100% !important;
     box-sizing: border-box;
-    height: 100% !important;
-    min-height: 100% !important;
-    line-height: normal !important;
+    height: 76px !important;
+    min-height: 76px !important;
+    line-height: 76px !important;
     border-radius: 15px;
-    padding: 0 !important;
+    padding: 0 1em !important;
     background-color: transparent !important;
     border: none !important;
     outline: none !important;
@@ -407,9 +407,10 @@ div[data-testid="stTextInput"] input {
     color: var(--text-primary);
     font-size: 1.89rem !important;
     font-weight: 700;
+    text-align: center !important;
+    -webkit-appearance: none;
+    appearance: none;
     display: block;
-    transform: translateY(-1px);
-    align-self: center;
 }
 
 div[data-testid="stTextInput"] input:focus {
