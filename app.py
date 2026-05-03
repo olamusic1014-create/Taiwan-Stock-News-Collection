@@ -10,13 +10,13 @@ import os
 import re
 import json
 import email.utils
+from html import escape
 
 from browser_support import detect_browser_status, get_launch_kwargs
 from market_data import merge_market_scan_data
 from news_relevance import build_google_rss_url, is_relevant_news_text
 from time_window import DEFAULT_DAY_RANGE, clamp_day_range, is_within_recent_days
 from ui_helpers import (
-    build_dashboard_loading_markup,
     build_dashboard_input_overlay_markup,
     build_dashboard_result_markup,
     build_dashboard_status_markup,
@@ -26,6 +26,30 @@ from ui_helpers import (
     normalize_stock_inputs,
 )
 from ui_config import get_mobile_search_panel_config, resolve_active_api_key
+
+try:
+    from ui_helpers import build_dashboard_loading_markup
+except ImportError:
+    def build_dashboard_loading_markup(
+        stock_name,
+        stock_code,
+        progress,
+        message="抓取資料中....",
+    ):
+        safe_stock_name = escape(stock_name or "分析任務")
+        safe_stock_code = escape(stock_code or "--")
+        safe_message = escape(message or "抓取資料中....")
+        safe_progress = max(0, min(100, int(progress or 0)))
+        return (
+            "<section class='analysis-loading-shell'>"
+            f"  <div class='analysis-loading-meta'>{safe_stock_name} ({safe_stock_code})</div>"
+            f"  <div class='analysis-loading-track' style='--loading-progress: {safe_progress}%;'>"
+            "    <div class='analysis-loading-fill'></div>"
+            f"    <p class='analysis-loading-text'>{safe_message}</p>"
+            "  </div>"
+            f"  <div class='analysis-loading-foot'>目前進度 {safe_progress}%</div>"
+            "</section>"
+        )
 
 # ===========================
 # 0. 環境準備
@@ -988,16 +1012,6 @@ if st.session_state.current_view and st.session_state.current_view in st.session
                 stock_name=task["stock_name"],
                 stock_code=task["stock_code"],
                 progress=task["progress"],
-            ),
-            unsafe_allow_html=True,
-        )
-        if False:
-            st.markdown(
-                (
-                "<div class='dashboard-empty'>"
-                f"{task['stock_name']} ({task['stock_code']}) 正在分析中，"
-                f"目前進度 {task['progress']}%。"
-                "</div>"
             ),
             unsafe_allow_html=True,
         )

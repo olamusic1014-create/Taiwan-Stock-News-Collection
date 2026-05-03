@@ -196,6 +196,14 @@ class UiHelpersTests(unittest.TestCase):
 
         self.assertIn("build_dashboard_loading_markup(", app_source)
 
+    def test_app_has_fallback_for_missing_loading_helper_import(self):
+        app_source = Path("app.py").read_text(encoding="utf-8")
+
+        self.assertIn("from html import escape", app_source)
+        self.assertIn("try:\n    from ui_helpers import build_dashboard_loading_markup", app_source)
+        self.assertIn("except ImportError:", app_source)
+        self.assertIn("safe_progress = max(0, min(100, int(progress or 0)))", app_source)
+
     def test_app_starts_with_blank_stock_inputs_and_no_native_placeholder_copy(self):
         app_source = Path("app.py").read_text(encoding="utf-8")
 
