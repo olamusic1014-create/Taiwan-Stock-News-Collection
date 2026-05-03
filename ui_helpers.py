@@ -433,14 +433,25 @@ div[data-testid="stTextInput"] input {
 }
 
 div[data-testid="stTextInput"] input:focus {
-    color: transparent !important;
-    -webkit-text-fill-color: transparent !important;
-    caret-color: #081226;
+    color: #787878 !important;
+    -webkit-text-fill-color: #787878 !important;
+    caret-color: #787878;
 }
 
 div[data-testid="stTextInput"] input::placeholder {
     color: transparent !important;
     -webkit-text-fill-color: transparent !important;
+}
+
+div[data-testid="stTextInput"] input:focus::placeholder {
+    color: rgba(120, 120, 120, 0.48) !important;
+    -webkit-text-fill-color: rgba(120, 120, 120, 0.48) !important;
+}
+
+div[data-testid="stTextInput"] input::selection {
+    background: rgba(61, 141, 255, 0.28);
+    color: #787878;
+    -webkit-text-fill-color: #787878;
 }
 
 .stock-input-overlay {
@@ -453,6 +464,8 @@ div[data-testid="stTextInput"] input::placeholder {
     align-items: center;
     justify-content: center;
     pointer-events: none;
+    opacity: 1;
+    transition: opacity 120ms ease;
 }
 
 .stock-input-overlay-value {
@@ -468,8 +481,8 @@ div[data-testid="stTextInput"] input::placeholder {
     color: rgba(248, 251, 255, 0.34);
 }
 
-div[data-testid="stTextInput"]:focus-within + div[data-testid="stMarkdownContainer"] .stock-input-overlay-value {
-    color: #081226;
+div[data-testid="stElementContainer"]:has(div[data-testid="stTextInput"]:focus-within) + div[data-testid="stElementContainer"] .stock-input-overlay {
+    opacity: 0;
 }
 
 div[data-testid="stSelectSlider"] [data-baseweb="slider"] {

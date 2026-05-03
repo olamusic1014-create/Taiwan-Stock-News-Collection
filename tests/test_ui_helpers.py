@@ -93,6 +93,7 @@ class UiHelpersTests(unittest.TestCase):
         self.assertIn("margin-top: -80px;", css)
         self.assertIn("margin-bottom: -80px;", css)
         self.assertIn("pointer-events: none;", css)
+        self.assertIn("opacity: 1;", css)
         self.assertIn(".stock-input-overlay-value {", css)
         self.assertIn("font-size: 1.89rem !important;", css)
         self.assertIn("transform: translateY(-6px);", css)
@@ -100,7 +101,17 @@ class UiHelpersTests(unittest.TestCase):
         self.assertIn("-webkit-text-fill-color: transparent !important;", css)
         self.assertIn("caret-color: var(--text-primary);", css)
         self.assertIn("text-align: center !important;", css)
-        self.assertIn('div[data-testid="stTextInput"]:focus-within + div[data-testid="stMarkdownContainer"] .stock-input-overlay-value {', css)
+        self.assertIn('div[data-testid="stElementContainer"]:has(div[data-testid="stTextInput"]:focus-within) + div[data-testid="stElementContainer"] .stock-input-overlay {', css)
+
+    def test_build_dashboard_theme_css_reveals_grey_native_text_on_focus(self):
+        css = build_dashboard_theme_css()
+
+        self.assertIn('div[data-testid="stTextInput"] input:focus {', css)
+        self.assertIn("color: #787878 !important;", css)
+        self.assertIn("-webkit-text-fill-color: #787878 !important;", css)
+        self.assertIn("caret-color: #787878;", css)
+        self.assertIn("opacity: 0;", css)
+        self.assertIn("input::selection {", css)
 
     def test_build_dashboard_input_overlay_markup_renders_escaped_value(self):
         markup = build_dashboard_input_overlay_markup("<2330>", "2330")
