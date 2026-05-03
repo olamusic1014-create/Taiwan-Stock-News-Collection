@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from ui_helpers import (
     build_dashboard_result_markup,
@@ -75,6 +76,13 @@ class UiHelpersTests(unittest.TestCase):
         self.assertNotIn(".status-banner-chart", css)
         self.assertNotIn(".bottom-nav", css)
 
+    def test_build_dashboard_theme_css_uses_inset_stock_input_style_reference(self):
+        css = build_dashboard_theme_css()
+
+        self.assertIn("border: none;", css)
+        self.assertIn("box-shadow: inset 2px 5px 10px", css)
+        self.assertIn("transform: scale(1.05);", css)
+
     def test_build_dashboard_status_markup_keeps_only_copy_without_chart_stub(self):
         markup = build_dashboard_status_markup("資料庫已就緒", "支援即時新聞爬取")
 
@@ -103,6 +111,16 @@ class UiHelpersTests(unittest.TestCase):
         self.assertIn("AI 綜合建議", markup)
         self.assertIn("台積電法說會優於預期", markup)
         self.assertIn("2330 · 2317 · 0050", markup)
+
+    def test_app_places_market_focus_section_above_task_and_result_sections(self):
+        app_source = Path("app.py").read_text(encoding="utf-8")
+
+        focus_index = app_source.index("# 今日股市焦點 區塊")
+        tasks_index = app_source.index("# 繪製 Task Slots 按鈕列")
+        result_index = app_source.index("# 顯示目前選取的報告")
+
+        self.assertLess(focus_index, tasks_index)
+        self.assertLess(focus_index, result_index)
 
 
 if __name__ == "__main__":

@@ -804,6 +804,104 @@ if st.session_state.last_resolved_inputs:
 if st.session_state.last_invalid_inputs:
     st.warning(f"找不到以下輸入：{'、'.join(st.session_state.last_invalid_inputs)}")
 
+# ===========================
+# 今日股市焦點 區塊
+# ===========================
+st.markdown('<div class="focus-button-wrapper">', unsafe_allow_html=True)
+focus_btn = st.button(
+    f"📡 {search_panel.focus_title}",
+    key="market_focus_btn",
+    use_container_width=True,
+)
+st.markdown('</div>', unsafe_allow_html=True)
+
+if focus_btn:
+    today_key = time.strftime('%Y-%m-%d')
+    mf = st.session_state.market_focus
+    if mf['status'] == 'done' and mf.get('fetched_date') == today_key:
+        st.toast("✅ 已顯示今日最新焦點（快取中）")
+    else:
+        st.session_state.market_focus = {
+            'status': 'running',
+            'headlines': [],
+            'summary': '',
+            'error': '',
+            'fetched_date': today_key
+        }
+        st.rerun()
+
+mf = st.session_state.market_focus
+if mf['status'] == 'running':
+    with st.spinner("📡 正在掃描今日台股市場頭條新聞，請稍候..."):
+        try:
+            today_headlines = asyncio.run(fetch_market_headlines_today())
+            ai_summary = ""
+            if active_key and today_headlines:
+                ai_summary = summarize_market_with_gemini(
+                    resolve_active_api_key(SYSTEM_API_KEY), today_headlines
+                )
+            elif not active_key:
+                ai_summary = "⚠️ 未設定 AI 金鑰，無法進行 AI 總結，僅顯示頭條新聞。"
+            elif not today_headlines:
+                ai_summary = "⚠️ 今日暫無抓取到市場頭條，請稍後再試。"
+
+            st.session_state.market_focus = {
+                'status': 'done',
+                'headlines': today_headlines,
+                'summary': ai_summary,
+                'error': '',
+                'fetched_date': time.strftime('%Y-%m-%d')
+            }
+        except Exception as e:
+            st.session_state.market_focus['status'] = 'error'
+            st.session_state.market_focus['error'] = str(e)
+    st.rerun()
+
+mf = st.session_state.market_focus
+if mf['status'] == 'done':
+    today_str = time.strftime('%Y年%m月%d日')
+    st.markdown(
+        f"""
+        <div class="dashboard-section-header">
+            <h2>🌐 {search_panel.focus_title}</h2>
+            <span>{today_str} · {len(mf['headlines'])} 則頭條</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if mf['summary']:
+        focus_summary_html = mf['summary'].replace("\n", "<br>")
+        st.markdown(
+            f"""
+            <section class='dashboard-card'>
+                <h3>大盤 AI 總結</h3>
+                <p>{focus_summary_html}</p>
+            </section>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    if mf['headlines']:
+        st.subheader(f"📰 今日市場新聞 ({len(mf['headlines'])} 則)")
+        for h in mf['headlines']:
+            snippet = (h.get('snippet') or '')[:72]
+            if len(h.get('snippet') or '') > 72:
+                snippet += '...'
+            link = h.get('link') or f"https://www.google.com/search?q={h['title']}"
+            st.markdown(
+                f"""
+                <div class='news-row'>
+                    <b>[{h['source']}]</b>
+                    <a href='{link}' target='_blank' style='text-decoration:none; font-weight:700; color:#8ec2ff;'>{h['title']}</a><br>
+                    <small style='color:#a8b7da;'>{snippet}</small>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+elif mf['status'] == 'error':
+    st.error(f"❌ 抓取今日焦點失敗：{mf['error']}")
+
 # 繪製 Task Slots 按鈕列
 st.markdown(
     """
@@ -982,109 +1080,6 @@ else:
         """,
         unsafe_allow_html=True,
     )
-
-# ===========================
-# 今日股市焦點 區塊
-# ===========================
-st.markdown('<div class="focus-button-wrapper">', unsafe_allow_html=True)
-focus_btn = st.button(
-    f"📡 {search_panel.focus_title}",
-    key="market_focus_btn",
-    use_container_width=True,
-)
-st.markdown('</div>', unsafe_allow_html=True)
-
-if focus_btn:
-    # 每日只抓一次，若已有當日資料則直接顯示
-    today_key = time.strftime('%Y-%m-%d')
-    mf = st.session_state.market_focus
-    if mf['status'] == 'done' and mf.get('fetched_date') == today_key:
-        st.toast("✅ 已顯示今日最新焦點（快取中）")
-    else:
-        st.session_state.market_focus = {
-            'status': 'running',
-            'headlines': [],
-            'summary': '',
-            'error': '',
-            'fetched_date': today_key
-        }
-        st.rerun()
-
-# 執行抓取（同步在主線程完成，避免 thread 衝突）
-mf = st.session_state.market_focus
-if mf['status'] == 'running':
-    with st.spinner("📡 正在掃描今日台股市場頭條新聞，請稍候..."):
-        try:
-            today_headlines = asyncio.run(fetch_market_headlines_today())
-            ai_summary = ""
-            if active_key and today_headlines:
-                ai_summary = summarize_market_with_gemini(
-                    resolve_active_api_key(SYSTEM_API_KEY), today_headlines
-                )
-            elif not active_key:
-                ai_summary = "⚠️ 未設定 AI 金鑰，無法進行 AI 總結，僅顯示頭條新聞。"
-            elif not today_headlines:
-                ai_summary = "⚠️ 今日暫無抓取到市場頭條，請稍後再試。"
-
-            st.session_state.market_focus = {
-                'status': 'done',
-                'headlines': today_headlines,
-                'summary': ai_summary,
-                'error': '',
-                'fetched_date': time.strftime('%Y-%m-%d')
-            }
-        except Exception as e:
-            st.session_state.market_focus['status'] = 'error'
-            st.session_state.market_focus['error'] = str(e)
-    st.rerun()
-
-# 顯示結果
-mf = st.session_state.market_focus
-if mf['status'] == 'done':
-    today_str = time.strftime('%Y年%m月%d日')
-    st.markdown(
-        f"""
-        <div class="dashboard-section-header">
-            <h2>🌐 {search_panel.focus_title}</h2>
-            <span>{today_str} · {len(mf['headlines'])} 則頭條</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    # AI 總結
-    if mf['summary']:
-        focus_summary_html = mf['summary'].replace("\n", "<br>")
-        st.markdown(
-            f"""
-            <section class='dashboard-card'>
-                <h3>大盤 AI 總結</h3>
-                <p>{focus_summary_html}</p>
-            </section>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    # 頭條新聞列表
-    if mf['headlines']:
-        st.subheader(f"📰 今日市場新聞 ({len(mf['headlines'])} 則)")
-        for h in mf['headlines']:
-            snippet = (h.get('snippet') or '')[:72]
-            if len(h.get('snippet') or '') > 72:
-                snippet += '...'
-            link = h.get('link') or f"https://www.google.com/search?q={h['title']}"
-            st.markdown(
-                f"""
-                <div class='news-row'>
-                    <b>[{h['source']}]</b>
-                    <a href='{link}' target='_blank' style='text-decoration:none; font-weight:700; color:#8ec2ff;'>{h['title']}</a><br>
-                    <small style='color:#a8b7da;'>{snippet}</small>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-elif mf['status'] == 'error':
-    st.error(f"❌ 抓取今日焦點失敗：{mf['error']}")
 
 # 定期更新檢查
 if any(t['status'] == 'running' for t in st.session_state.tasks.values()):

@@ -165,6 +165,7 @@ def build_dashboard_theme_css() -> str:
     font-size: 2rem;
     font-weight: 800;
     letter-spacing: -0.04em;
+    text-align: center;
 }
 
 .hero-copy p {
@@ -341,6 +342,7 @@ div[data-testid="stForm"] div[data-testid="stHorizontalBlock"] {
 
 div[data-testid="stTextInput"] {
     width: 100%;
+    overflow: visible;
 }
 
 div[data-testid="stTextInput"] > div {
@@ -352,23 +354,31 @@ div[data-testid="stSelectSlider"] label p {
     color: var(--text-secondary) !important;
     font-size: 0.85rem !important;
     font-weight: 600 !important;
+    text-align: center !important;
 }
 
 div[data-testid="stTextInput"] input {
     width: 100% !important;
     box-sizing: border-box;
     min-height: 56px;
-    border-radius: 18px;
-    background: rgba(15, 29, 58, 0.95);
-    border: 1px solid rgba(89, 122, 189, 0.25);
+    border-radius: 15px;
+    padding: 1em;
+    background-color: rgba(22, 37, 69, 0.96);
+    border: none;
+    outline: none;
+    box-shadow: inset 2px 5px 10px rgba(0,0,0,0.3);
+    transition: 300ms ease-in-out;
     color: var(--text-primary);
     font-size: 1.05rem;
     font-weight: 600;
 }
 
 div[data-testid="stTextInput"] input:focus {
-    border-color: rgba(74, 213, 255, 0.55);
-    box-shadow: 0 0 0 1px rgba(74, 213, 255, 0.35);
+    background-color: rgba(245, 248, 255, 0.98);
+    color: #081226;
+    transform: scale(1.05);
+    box-shadow: 13px 13px 100px rgba(26, 48, 92, 0.38),
+                -13px -13px 100px rgba(255, 255, 255, 0.12);
 }
 
 div[data-testid="stSelectSlider"] [data-baseweb="slider"] {
