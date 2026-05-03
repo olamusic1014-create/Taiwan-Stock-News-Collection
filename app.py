@@ -838,6 +838,7 @@ with st.form("mobile_search_form"):
                 search_panel.input_labels[idx],
                 value=default_inputs[idx],
                 placeholder="",
+                autocomplete="off",
                 key=f"dashboard_symbol_{idx}",
             )
             raw_inputs.append(input_value)

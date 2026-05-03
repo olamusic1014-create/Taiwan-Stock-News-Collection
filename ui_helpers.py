@@ -436,6 +436,18 @@ div[data-testid="stTextInput"] input:focus {
     color: #787878 !important;
     -webkit-text-fill-color: #787878 !important;
     caret-color: #787878;
+    transform: translateY(-6px);
+}
+
+div[data-testid="stTextInput"] input:-webkit-autofill,
+div[data-testid="stTextInput"] input:-webkit-autofill:hover,
+div[data-testid="stTextInput"] input:-webkit-autofill:focus {
+    -webkit-text-fill-color: #787878 !important;
+    caret-color: #787878;
+    transform: translateY(-6px);
+    border-radius: 15px;
+    -webkit-box-shadow: 0 0 0 1000px rgba(245, 248, 255, 0.98) inset;
+    box-shadow: 0 0 0 1000px rgba(245, 248, 255, 0.98) inset;
 }
 
 div[data-testid="stTextInput"] input::placeholder {

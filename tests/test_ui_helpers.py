@@ -114,6 +114,14 @@ class UiHelpersTests(unittest.TestCase):
         self.assertIn("opacity: 0;", css)
         self.assertIn("input::selection {", css)
 
+    def test_build_dashboard_theme_css_optically_centers_native_text_on_focus_and_autofill(self):
+        css = build_dashboard_theme_css()
+
+        self.assertIn("transform: translateY(-6px);", css)
+        self.assertIn('div[data-testid="stTextInput"] input:-webkit-autofill,', css)
+        self.assertIn('div[data-testid="stTextInput"] input:-webkit-autofill:focus {', css)
+        self.assertIn("caret-color: #787878;", css)
+
     def test_build_dashboard_theme_css_keeps_native_placeholder_hidden_while_editing(self):
         css = build_dashboard_theme_css()
 
@@ -219,6 +227,11 @@ class UiHelpersTests(unittest.TestCase):
         self.assertIn('default_inputs = list(st.session_state.get("last_inputs", ["", "", ""]))[:3]', app_source)
         self.assertIn('placeholder=""', app_source)
         self.assertNotIn('["2330", "2317", "0050"]', app_source)
+
+    def test_app_disables_browser_autocomplete_for_stock_inputs(self):
+        app_source = Path("app.py").read_text(encoding="utf-8")
+
+        self.assertIn('autocomplete="off"', app_source)
 
     def test_build_dashboard_loading_markup_renders_clamped_progress_bar(self):
         markup = build_dashboard_loading_markup(
