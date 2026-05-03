@@ -254,6 +254,11 @@ class UiHelpersTests(unittest.TestCase):
 
         self.assertIn('autocomplete="off"', app_source)
 
+    def test_app_requires_explicit_click_to_submit_analysis_form(self):
+        app_source = Path("app.py").read_text(encoding="utf-8")
+
+        self.assertIn('with st.form("mobile_search_form", enter_to_submit=False):', app_source)
+
     def test_build_dashboard_loading_markup_renders_clamped_progress_bar(self):
         markup = build_dashboard_loading_markup(
             stock_name="台積電",

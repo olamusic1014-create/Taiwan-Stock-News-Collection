@@ -818,7 +818,7 @@ if not active_key:
     )
 
 default_day_range = clamp_day_range(st.session_state.get("selected_day_range", DEFAULT_DAY_RANGE))
-with st.form("mobile_search_form"):
+with st.form("mobile_search_form", enter_to_submit=False):
     st.markdown(
         f"""
         <div class="panel-heading">
